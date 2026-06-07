@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -13,6 +15,1421 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'backend_api.dart';
+import 'user_profile_cache.dart';
+
+bool get _isApple => Platform.isIOS || Platform.isMacOS;
+
+ImageProvider? _profileAvatarImage(String? localPath, String? networkUrl) {
+  if (localPath != null &&
+      localPath.isNotEmpty &&
+      File(localPath).existsSync()) {
+    return FileImage(File(localPath));
+  }
+  if (networkUrl != null && networkUrl.isNotEmpty) {
+    return NetworkImage(networkUrl);
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// iOS DESIGN HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+Color _iosBackground(BuildContext context) {
+  return CupertinoColors.systemGroupedBackground.resolveFrom(context);
+}
+
+Color _iosCardBackground(BuildContext context) {
+  return CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context);
+}
+
+Color _iosSeparator(BuildContext context) {
+  return CupertinoColors.separator.resolveFrom(context);
+}
+
+Color _iosSecondaryLabel(BuildContext context) {
+  return CupertinoColors.secondaryLabel.resolveFrom(context);
+}
+
+/// iOS-style grouped list section: rounded background with subtle inner dividers.
+class _AppleSection extends StatelessWidget {
+  final List<Widget> children;
+  final String? header;
+  final String? footer;
+  final double dividerIndent;
+  const _AppleSection({
+    required this.children,
+    this.header,
+    this.footer,
+    this.dividerIndent = 16,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final secondary = _iosSecondaryLabel(context);
+    final rows = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      rows.add(children[i]);
+      if (i < children.length - 1) {
+        rows.add(
+          Padding(
+            padding: EdgeInsetsDirectional.only(start: dividerIndent),
+            child: Container(height: 0.5, color: _iosSeparator(context)),
+          ),
+        );
+      }
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (header != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 14, 16, 6),
+              child: Text(
+                header!.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: secondary,
+                  letterSpacing: -0.08,
+                ),
+              ),
+            ),
+          Container(
+            decoration: BoxDecoration(
+              color: _iosCardBackground(context),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: rows,
+            ),
+          ),
+          if (footer != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 16, 0),
+              child: Text(
+                footer!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: secondary,
+                  height: 1.32,
+                  letterSpacing: -0.08,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OUTREACH STATISTICS MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class OutreachStatEntry {
+  final int id;
+  final int userId;
+  final DateTime outreachDate;
+  final int gospelsTold;
+  final int salvationPrayedUnreachable;
+  final int scripturesDistributed;
+  final int healingsDeliverances;
+  final String? note;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String userName;
+  final String? userAvatarUrl;
+
+  OutreachStatEntry({
+    required this.id,
+    required this.userId,
+    required this.outreachDate,
+    required this.gospelsTold,
+    required this.salvationPrayedUnreachable,
+    required this.scripturesDistributed,
+    required this.healingsDeliverances,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.userName,
+    this.userAvatarUrl,
+    this.note,
+  });
+
+  factory OutreachStatEntry.fromMap(Map<String, dynamic> m) {
+    final user = m['user'] as Map<String, dynamic>? ?? {};
+
+    return OutreachStatEntry(
+      id: (m['id'] as num?)?.toInt() ?? 0,
+      userId: (m['user_id'] as num?)?.toInt() ?? 0,
+      outreachDate:
+          DateTime.tryParse(m['outreach_date'] as String? ?? '') ??
+          DateTime.now(),
+      gospelsTold: (m['gospels_told'] as num?)?.toInt() ?? 0,
+      salvationPrayedUnreachable:
+          (m['salvation_prayed_unreachable'] as num?)?.toInt() ?? 0,
+      scripturesDistributed:
+          (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
+      healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
+      note: (m['note'] as String?)?.trim(),
+      createdAt:
+          DateTime.tryParse(m['created_at'] as String? ?? '') ?? DateTime.now(),
+      updatedAt:
+          DateTime.tryParse(m['updated_at'] as String? ?? '') ?? DateTime.now(),
+      userName: (user['name'] as String? ?? '').trim(),
+      userAvatarUrl: user['avatar_url'] as String?,
+    );
+  }
+}
+
+/// iOS form row: leading squircle icon + Cupertino-style text field.
+class _AppleInputRow extends StatelessWidget {
+  final IconData? icon;
+  final Color? iconBackground;
+  final String placeholder;
+  final TextEditingController controller;
+  final String? Function(String?)? validator;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final int? minLines;
+  final int maxLines;
+  final bool autocorrect;
+
+  const _AppleInputRow({
+    this.icon,
+    this.iconBackground,
+    required this.placeholder,
+    required this.controller,
+    this.validator,
+    this.inputFormatters,
+    this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.minLines,
+    this.maxLines = 1,
+    this.autocorrect = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final multiline = maxLines > 1;
+    final labelColor = CupertinoColors.label.resolveFrom(context);
+    final placeholderColor = CupertinoColors.placeholderText.resolveFrom(
+      context,
+    );
+
+    return TextFormField(
+      controller: controller,
+      validator: validator,
+      keyboardType:
+          keyboardType ??
+          (multiline ? TextInputType.multiline : TextInputType.text),
+      textInputAction: multiline
+          ? TextInputAction.newline
+          : TextInputAction.next,
+      textCapitalization: textCapitalization,
+      minLines: minLines,
+      maxLines: maxLines,
+      inputFormatters: inputFormatters,
+      autocorrect: autocorrect,
+      cursorColor: Theme.of(context).colorScheme.primary,
+      style: TextStyle(fontSize: 17, color: labelColor, letterSpacing: -0.3),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        focusedErrorBorder: InputBorder.none,
+        contentPadding: EdgeInsets.fromLTRB(
+          icon == null ? 16 : 0,
+          multiline ? 12 : 14,
+          16,
+          multiline ? 12 : 14,
+        ),
+        prefixIcon: icon == null
+            ? null
+            : Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 12, 0),
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color:
+                        iconBackground ??
+                        CupertinoColors.systemGrey5.resolveFrom(context),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, size: 18, color: CupertinoColors.white),
+                ),
+              ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+        hintText: placeholder,
+        hintStyle: TextStyle(
+          fontSize: 17,
+          color: placeholderColor,
+          letterSpacing: -0.3,
+        ),
+        errorStyle: TextStyle(
+          fontSize: 12,
+          color: CupertinoColors.destructiveRed.resolveFrom(context),
+        ),
+      ),
+    );
+  }
+}
+
+/// Item descriptor for the modern Apple glass tab bar.
+class _AppleTabItem {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  const _AppleTabItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
+}
+
+/// Modern iOS-18-style floating glass tab bar with blurred background,
+/// soft elevation, animated selection pill and SF-style label scaling.
+class _AppleGlassTabBar extends StatelessWidget {
+  final List<_AppleTabItem> items;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+  final Color tint;
+
+  const _AppleGlassTabBar({
+    required this.items,
+    required this.currentIndex,
+    required this.onTap,
+    required this.tint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
+    // Translucent material body. The bar floats and clears the screen edge.
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        12,
+        4,
+        12,
+        bottomInset > 0 ? bottomInset + 4 : 14,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              color:
+                  (isDark
+                          ? const Color(0xFF1C1C1E)
+                          : CupertinoColors.systemBackground.resolveFrom(
+                              context,
+                            ))
+                      .withOpacity(isDark ? 0.72 : 0.78),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withOpacity(0.08)
+                    : Colors.black.withOpacity(0.05),
+                width: 0.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.45 : 0.10),
+                  blurRadius: 24,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: List.generate(items.length, (i) {
+                  return Expanded(
+                    child: _AppleGlassTab(
+                      item: items[i],
+                      selected: i == currentIndex,
+                      tint: tint,
+                      onTap: () => onTap(i),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Single tab in the glass bar — animated icon swap + pill highlight.
+class _AppleGlassTab extends StatelessWidget {
+  final _AppleTabItem item;
+  final bool selected;
+  final Color tint;
+  final VoidCallback onTap;
+
+  const _AppleGlassTab({
+    required this.item,
+    required this.selected,
+    required this.tint,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final inactiveColor = CupertinoColors.secondaryLabel.resolveFrom(context);
+    final color = selected ? tint : inactiveColor;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        decoration: BoxDecoration(
+          color: selected ? tint.withOpacity(0.14) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, anim) => ScaleTransition(
+                scale: Tween<double>(begin: 0.85, end: 1.0).animate(anim),
+                child: FadeTransition(opacity: anim, child: child),
+              ),
+              child: Icon(
+                selected ? item.activeIcon : item.icon,
+                key: ValueKey<bool>(selected),
+                size: 24,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              item.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: color,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// iOS form row used for pickers: title, current value, chevron.
+class _AppleTapRow extends StatelessWidget {
+  final IconData? icon;
+  final Color? iconBackground;
+  final String title;
+  final String? value;
+  final String? placeholder;
+  final VoidCallback onTap;
+  final Widget? trailingExtra;
+
+  const _AppleTapRow({
+    this.icon,
+    this.iconBackground,
+    required this.title,
+    this.value,
+    this.placeholder,
+    required this.onTap,
+    this.trailingExtra,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final labelColor = CupertinoColors.label.resolveFrom(context);
+    final secondary = _iosSecondaryLabel(context);
+    final hasValue = value != null && value!.isNotEmpty;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color:
+                      iconBackground ??
+                      CupertinoColors.systemGrey5.resolveFrom(context),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, size: 18, color: CupertinoColors.white),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 17,
+                  color: labelColor,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                hasValue ? value! : (placeholder ?? ''),
+                textAlign: TextAlign.end,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 17,
+                  color: secondary,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+            if (trailingExtra != null) ...[
+              const SizedBox(width: 6),
+              trailingExtra!,
+            ],
+            const SizedBox(width: 4),
+            Icon(
+              CupertinoIcons.chevron_forward,
+              size: 16,
+              color: CupertinoColors.tertiaryLabel.resolveFrom(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// iOS list row with leading squircle icon, title and chevron.
+class _AppleListRow extends StatelessWidget {
+  final IconData? icon;
+  final Color? iconColor;
+  final Color? iconBackground;
+  final String title;
+  final VoidCallback? onTap;
+  final bool destructive;
+
+  const _AppleListRow({
+    this.icon,
+    this.iconColor,
+    this.iconBackground,
+    required this.title,
+    this.onTap,
+    this.destructive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final titleColor = destructive
+        ? CupertinoColors.destructiveRed.resolveFrom(context)
+        : CupertinoColors.label.resolveFrom(context);
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color:
+                    iconBackground ??
+                    CupertinoColors.systemGrey5.resolveFrom(context),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 18, color: iconColor ?? titleColor),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 17,
+                color: titleColor,
+                letterSpacing: -0.4,
+              ),
+            ),
+          ),
+          if (onTap != null)
+            Icon(
+              CupertinoIcons.chevron_forward,
+              size: 16,
+              color: CupertinoColors.tertiaryLabel.resolveFrom(context),
+            ),
+        ],
+      ),
+    );
+
+    if (onTap == null) return content;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: content,
+    );
+  }
+}
+
+/// Premium hero card for the "Testimony of the day".
+/// Apple News / "Today" featured-card style: gradient + decorative giant quote glyph.
+class _AppleTestimonyHero extends StatelessWidget {
+  final Color tint;
+  final String label;
+  final String text;
+  final String? author;
+  final String? addedByName;
+  final String? addedByAvatarUrl;
+  final VoidCallback? onTap;
+  const _AppleTestimonyHero({
+    required this.tint,
+    required this.label,
+    required this.text,
+    required this.author,
+    this.addedByName,
+    this.addedByAvatarUrl,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final labelColor = CupertinoColors.label.resolveFrom(context);
+    final secondary = _iosSecondaryLabel(context);
+    final displayName = addedByName?.isNotEmpty == true
+        ? addedByName
+        : (author?.isNotEmpty == true ? author : null);
+    final hasAuthor = displayName != null;
+
+    final card = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              tint.withOpacity(isDark ? 0.30 : 0.18),
+              tint.withOpacity(isDark ? 0.10 : 0.04),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: tint.withOpacity(isDark ? 0.18 : 0.10),
+              blurRadius: 22,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            children: [
+              // Decorative giant quote glyph in top-right
+              Positioned(
+                top: -28,
+                right: -10,
+                child: IgnorePointer(
+                  child: Text(
+                    '\u201C',
+                    style: TextStyle(
+                      fontSize: 180,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      color: tint.withOpacity(isDark ? 0.16 : 0.12),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: tint,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: tint.withOpacity(0.35),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            CupertinoIcons.book_fill,
+                            size: 16,
+                            color: CupertinoColors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            label.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: tint,
+                              letterSpacing: 0.5,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (onTap != null)
+                          Icon(
+                            CupertinoIcons.chevron_forward,
+                            size: 16,
+                            color: tint,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      text,
+                      style: TextStyle(
+                        fontSize: 22,
+                        height: 1.32,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.5,
+                        color: labelColor,
+                      ),
+                    ),
+                    if (hasAuthor) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 13,
+                            backgroundColor: tint.withOpacity(0.15),
+                            foregroundImage: addedByAvatarUrl != null &&
+                                    addedByAvatarUrl!.isNotEmpty
+                                ? NetworkImage(addedByAvatarUrl!)
+                                : null,
+                            child: (addedByAvatarUrl == null ||
+                                    addedByAvatarUrl!.isEmpty)
+                                ? Icon(
+                                    CupertinoIcons.person_fill,
+                                    size: 13,
+                                    color: tint,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              displayName!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: labelColor,
+                                letterSpacing: -0.1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (onTap == null) return card;
+    return GestureDetector(onTap: onTap, child: card);
+  }
+}
+
+/// Premium Apple-ID-style profile hero: gradient card, floating avatar, action chip.
+class _AppleProfileHero extends StatelessWidget {
+  final BackendUser user;
+  final String? avatarUrl;
+  final String? avatarLocalPath;
+  final Color tint;
+  final VoidCallback onEdit;
+  final String editLabel;
+  const _AppleProfileHero({
+    required this.user,
+    required this.avatarUrl,
+    required this.avatarLocalPath,
+    required this.tint,
+    required this.onEdit,
+    required this.editLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final ringColor = (isDark ? Colors.white : Colors.white).withOpacity(0.85);
+    final shadowColor = tint.withOpacity(isDark ? 0.45 : 0.25);
+    final labelColor = CupertinoColors.label.resolveFrom(context);
+    final secondary = _iosSecondaryLabel(context);
+    final avatarImage = _profileAvatarImage(avatarLocalPath, avatarUrl);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              tint.withOpacity(isDark ? 0.32 : 0.20),
+              tint.withOpacity(isDark ? 0.10 : 0.04),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+          child: Column(
+            children: [
+              // Avatar with ring + shadow
+              Container(
+                width: 104,
+                height: 104,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: tint.withOpacity(0.18),
+                  border: Border.all(color: ringColor, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: shadowColor,
+                      blurRadius: 24,
+                      spreadRadius: 0,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                  image: avatarImage != null
+                      ? DecorationImage(image: avatarImage, fit: BoxFit.cover)
+                      : null,
+                ),
+                alignment: Alignment.center,
+                child: avatarImage == null
+                    ? Text(
+                        user.initials,
+                        style: TextStyle(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w800,
+                          color: tint,
+                          letterSpacing: -0.5,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                user.name.isEmpty ? '—' : user.name,
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.6,
+                  color: labelColor,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                user.email,
+                style: TextStyle(fontSize: 14, color: secondary),
+              ),
+              const SizedBox(height: 18),
+              // Floating action chip
+              _AppleActionChip(
+                icon: CupertinoIcons.pencil,
+                label: editLabel,
+                onTap: onEdit,
+                tint: tint,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Vibrant pill button used inside hero cards (glass + tint).
+class _AppleActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color tint;
+  const _AppleActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.tint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withOpacity(0.14)
+              : Colors.white.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(99),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.0 : 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: tint),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: tint,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Apple Health-style stat tile: icon, big number, label on card.
+class _AppleStatCard extends StatelessWidget {
+  final IconData icon;
+  final Color tint;
+  final String value;
+  final String label;
+  const _AppleStatCard({
+    required this.icon,
+    required this.tint,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        color: _iosCardBackground(context),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: tint),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: tint,
+                    letterSpacing: -0.1,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 36,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1.0,
+              color: CupertinoColors.label.resolveFrom(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OutreachStatsSheet extends StatefulWidget {
+  final S tr;
+  final OutreachStatEntry? existing;
+  final Future<void> Function({
+    required String outreachDate,
+    required int gospelsTold,
+    required int salvationPrayedUnreachable,
+    required int scripturesDistributed,
+    required int healingsDeliverances,
+  })
+  onSave;
+
+  const _OutreachStatsSheet({
+    required this.tr,
+    required this.existing,
+    required this.onSave,
+  });
+
+  @override
+  State<_OutreachStatsSheet> createState() => _OutreachStatsSheetState();
+}
+
+class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
+  late final TextEditingController _gospels;
+  late final TextEditingController _salvation;
+  late final TextEditingController _scriptures;
+  late final TextEditingController _healings;
+  late DateTime _outreachDate;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _outreachDate = e?.outreachDate ?? DateTime.now();
+    _gospels = TextEditingController(text: e != null ? '${e.gospelsTold}' : '');
+    _salvation = TextEditingController(
+      text: e != null ? '${e.salvationPrayedUnreachable}' : '',
+    );
+    _scriptures = TextEditingController(
+      text: e != null ? '${e.scripturesDistributed}' : '',
+    );
+    _healings = TextEditingController(
+      text: e != null ? '${e.healingsDeliverances}' : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _gospels.dispose();
+    _salvation.dispose();
+    _scriptures.dispose();
+    _healings.dispose();
+    super.dispose();
+  }
+
+  int _parse(TextEditingController c) => int.tryParse(c.text.trim()) ?? 0;
+
+  Future<void> _pickDate() async {
+    if (_isApple) {
+      DateTime temp = _outreachDate;
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (_) => Container(
+          height: 280,
+          color: CupertinoColors.systemBackground.resolveFrom(context),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 44,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    CupertinoButton(
+                      child: Text(widget.tr.cancel),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    CupertinoButton(
+                      child: Text(widget.tr.done),
+                      onPressed: () {
+                        setState(() => _outreachDate = temp);
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.date,
+                  initialDateTime: _outreachDate,
+                  minimumDate: DateTime(2020),
+                  maximumDate: DateTime.now().add(const Duration(days: 1)),
+                  onDateTimeChanged: (d) => temp = d,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _outreachDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (d != null && mounted) setState(() => _outreachDate = d);
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onSave(
+        outreachDate: DateFormat('yyyy-MM-dd').format(_outreachDate),
+        gospelsTold: _parse(_gospels),
+        salvationPrayedUnreachable: _parse(_salvation),
+        scripturesDistributed: _parse(_scriptures),
+        healingsDeliverances: _parse(_healings),
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      setState(() {
+        _saving = false;
+        _error = widget.tr.outreachStatsError;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tr = widget.tr;
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final height = MediaQuery.of(context).size.height * 0.82;
+
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: _iosBackground(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onVerticalDragUpdate: (d) {
+                if (d.primaryDelta != null && d.primaryDelta! > 10) {
+                  Navigator.of(context).pop();
+                }
+              },
+              child: Container(
+                  margin: const EdgeInsets.only(top: 8, bottom: 4),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: _iosSeparator(context),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+            ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          tr.outreachStatsHeader,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: _saving ? null : _save,
+                        child: _saving
+                            ? const CupertinoActivityIndicator()
+                            : Text(
+                                tr.save,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 0.5, color: _iosSeparator(context)),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      0,
+                      12,
+                      0,
+                      viewInsets.bottom + 20,
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _AppleSection(
+                            children: [
+                              _AppleTapRow(
+                                icon: CupertinoIcons.calendar,
+                                iconBackground: const Color(0xFF007AFF),
+                                title: tr.outreachDate,
+                                value: DateFormat('dd.MM.yyyy').format(_outreachDate),
+                                onTap: _pickDate,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          _AppleSection(
+                            children: [
+                              _AppleInputRow(
+                                icon: CupertinoIcons.smiley,
+                                iconBackground: const Color(0xFF34C759),
+                                placeholder: tr.gospelsTold,
+                                controller: _gospels,
+                                keyboardType: TextInputType.number,
+                              ),
+                              _AppleInputRow(
+                                icon: CupertinoIcons.heart,
+                                iconBackground: const Color(0xFFFF3B30),
+                                placeholder: tr.salvationPrayedUnreachable,
+                                controller: _salvation,
+                                keyboardType: TextInputType.number,
+                              ),
+                              _AppleInputRow(
+                                icon: CupertinoIcons.book,
+                                iconBackground: const Color(0xFFFF9500),
+                                placeholder: tr.scripturesDistributed,
+                                controller: _scriptures,
+                                keyboardType: TextInputType.number,
+                              ),
+                              _AppleInputRow(
+                                icon: CupertinoIcons.waveform_path_ecg,
+                                iconBackground: const Color(0xFF5856D6),
+                                placeholder: tr.healingsDeliverances,
+                                controller: _healings,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ],
+                          ),
+                          if (_error != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                              child: Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: CupertinoColors.destructiveRed
+                                      .resolveFrom(context),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    );
+  }
+}
+
+/// Empty/error state for unauthenticated profile.
+class _AppleProfileEmpty extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? subtitle;
+  final String actionLabel;
+  final VoidCallback onAction;
+  final bool destructive;
+  const _AppleProfileEmpty({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.actionLabel,
+    required this.onAction,
+    this.destructive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 32, 16, 8),
+      child: Column(
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: iconColor.withOpacity(0.14),
+              boxShadow: [
+                BoxShadow(
+                  color: iconColor.withOpacity(0.22),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 44, color: iconColor),
+          ),
+          const SizedBox(height: 22),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                subtitle!,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: _iosSecondaryLabel(context),
+                  height: 1.35,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: CupertinoButton(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              color: destructive
+                  ? CupertinoColors.destructiveRed.resolveFrom(context)
+                  : Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(14),
+              onPressed: onAction,
+              child: Text(
+                actionLabel,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// iOS-style large title block (sits at top of scroll view).
+class _AppleLargeTitle extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onSettings;
+  const _AppleLargeTitle({required this.title, this.subtitle, this.onSettings});
+
+  @override
+  Widget build(BuildContext context) {
+    final secondary = _iosSecondaryLabel(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                  ),
+                ),
+              ),
+              if (onSettings != null)
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minSize: 32,
+                  onPressed: onSettings,
+                  child: Icon(
+                    CupertinoIcons.slider_horizontal_3,
+                    size: 24,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+            ],
+          ),
+          if (subtitle != null && subtitle!.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(subtitle!, style: TextStyle(fontSize: 15, color: secondary)),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
@@ -59,7 +1476,7 @@ class _TimeToGoAppState extends State<TimeToGoApp> {
   static const _tokenKey = 'api_access_token_v1';
   static const _apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://5.42.113.18:8000',
+    defaultValue: 'http://138.16.161.26:8000',
   );
   static const _apiAccessToken = String.fromEnvironment('API_ACCESS_TOKEN');
 
@@ -114,6 +1531,7 @@ class _TimeToGoAppState extends State<TimeToGoApp> {
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await UserProfileCache().clear();
     _backendApi.setAccessToken(null);
     setState(() {
       _accessToken = null;
@@ -153,7 +1571,13 @@ class _TimeToGoAppState extends State<TimeToGoApp> {
     if (!_ready) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+        home: Scaffold(
+          body: Center(
+            child: _isApple
+                ? const CupertinoActivityIndicator(radius: 14)
+                : const CircularProgressIndicator(),
+          ),
+        ),
       );
     }
     return MaterialApp(
@@ -257,6 +1681,174 @@ ThemeData _buildTheme(Brightness brightness) {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
   );
+}
+
+// Row used in DashboardPage — per-user card with 2x2 mini stats grid
+class _DashboardOutreachRow extends StatelessWidget {
+  final OutreachStatEntry entry;
+  final BackendApi backendApi;
+  final S tr;
+
+  const _DashboardOutreachRow({
+    required this.entry,
+    required this.backendApi,
+    required this.tr,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final avatarUrl = entry.userAvatarUrl != null
+        ? backendApi.resolveUrl(entry.userAvatarUrl!).toString()
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // User header
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.14),
+                foregroundImage: avatarUrl != null
+                    ? NetworkImage(avatarUrl)
+                    : null,
+                child: avatarUrl == null
+                    ? Text(
+                        entry.userName.isNotEmpty
+                            ? entry.userName[0].toUpperCase()
+                            : '?',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(entry.userName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    Text(
+                      DateFormat('dd.MM.yyyy').format(entry.outreachDate),
+                      style: TextStyle(fontSize: 12, color: _iosSecondaryLabel(context)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Stats grid 2x2
+          Row(
+            children: [
+              Expanded(
+                child: _MiniStatItem(
+                  icon: CupertinoIcons.bubble_left_fill,
+                  color: const Color(0xFF34C759),
+                  value: '${entry.gospelsTold}',
+                  label: tr.gospelsTold,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MiniStatItem(
+                  icon: CupertinoIcons.heart_fill,
+                  color: const Color(0xFFFF3B30),
+                  value: '${entry.salvationPrayedUnreachable}',
+                  label: tr.salvationPrayedUnreachable,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniStatItem(
+                  icon: CupertinoIcons.book_fill,
+                  color: const Color(0xFFFF9500),
+                  value: '${entry.scripturesDistributed}',
+                  label: tr.scripturesDistributed,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MiniStatItem(
+                  icon: CupertinoIcons.waveform_path_ecg,
+                  color: const Color(0xFF5856D6),
+                  value: '${entry.healingsDeliverances}',
+                  label: tr.healingsDeliverances,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniStatItem extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String value;
+  final String label;
+
+  const _MiniStatItem({
+    required this.icon,
+    required this.color,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _iosSecondaryLabel(context),
+                    height: 1.2,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -365,6 +1957,187 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     final tr = S(widget.language);
     final theme = Theme.of(context);
+
+    if (_isApple) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                children: [
+                  Text(
+                    tr.appTitle,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    tr.authSub,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoSlidingSegmentedControl<int>(
+                      groupValue: _tab,
+                      children: {
+                        0: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          child: Text(tr.signIn),
+                        ),
+                        1: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          child: Text(tr.signUp),
+                        ),
+                      },
+                      onValueChanged: (v) {
+                        if (_busy) return;
+                        setState(() {
+                          _tab = v ?? 0;
+                          _error = null;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  if (_tab == 1) ...[
+                    CupertinoTextField(
+                      controller: _name,
+                      textCapitalization: TextCapitalization.words,
+                      enabled: !_busy,
+                      placeholder: tr.yourName,
+                      prefix: const Padding(
+                        padding: EdgeInsets.only(left: 10),
+                        child: Icon(
+                          CupertinoIcons.person,
+                          size: 20,
+                          color: CupertinoColors.systemGrey,
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.systemBackground.resolveFrom(
+                          context,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: CupertinoColors.separator.resolveFrom(context),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  CupertinoTextField(
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    enabled: !_busy,
+                    placeholder: tr.authEmail,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(left: 10),
+                      child: Icon(
+                        CupertinoIcons.at,
+                        size: 20,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CupertinoColors.systemBackground.resolveFrom(
+                        context,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: CupertinoColors.separator.resolveFrom(context),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  CupertinoTextField(
+                    controller: _password,
+                    enabled: !_busy,
+                    obscureText: true,
+                    placeholder: tr.authPassword,
+                    prefix: const Padding(
+                      padding: EdgeInsets.only(left: 10),
+                      child: Icon(
+                        CupertinoIcons.lock,
+                        size: 20,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CupertinoColors.systemBackground.resolveFrom(
+                        context,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: CupertinoColors.separator.resolveFrom(context),
+                      ),
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: TextStyle(
+                        color: CupertinoColors.destructiveRed.resolveFrom(
+                          context,
+                        ),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      onPressed: _busy ? null : _submit,
+                      borderRadius: BorderRadius.circular(12),
+                      child: _busy
+                          ? const CupertinoActivityIndicator(
+                              color: CupertinoColors.white,
+                            )
+                          : Text(_tab == 0 ? tr.signIn : tr.signUp),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  CupertinoButton(
+                    onPressed: _busy ? null : widget.onContinueOffline,
+                    child: Text(
+                      tr.continueOffline,
+                      style: TextStyle(color: theme.colorScheme.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -537,16 +2310,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const _key = 'believers_v2';
   final List<NewBeliever> _list = [];
+  final List<NewBeliever> _mapList = [];
   final Map<EvangelismMethod, int> _defaultMethodIds = {};
   final Map<String, int> _customMethodIds = {};
   BackendUser? _backendUser;
+  String? _cachedAvatarPath;
+  final UserProfileCache _profileCache = UserProfileCache();
   int _heardGospelCount = 0;
   int _acceptedJesusCount = 0;
-  String? _testimonyOfDay;
-  String? _testimonyAuthor;
+  List<LatestTestimony> _latestTestimonies = [];
   bool _dashboardLoading = true;
   bool _loading = true;
   int _tab = 0;
+
+  List<OutreachStatEntry> _allOutreachStats = [];
+  List<OutreachStatEntry> _myOutreachStats = [];
+  bool _outreachStatsLoading = true;
 
   BackendApi get _backendApi => widget.backendApi;
 
@@ -568,18 +2347,36 @@ class _HomeScreenState extends State<HomeScreen> {
     final p = await SharedPreferences.getInstance();
     final raw = p.getStringList(_key) ?? [];
     BackendUser? backendUser;
+    String? cachedAvatarPath;
     final localItems = raw
         .map((e) => NewBeliever.fromMap(jsonDecode(e) as Map<String, dynamic>))
         .toList();
     var items = [...localItems]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    var mapItems = [...items];
 
     if (_backendApi.hasAuth) {
+      final cachedJson = await _profileCache.loadUserJson();
+      if (cachedJson != null) {
+        try {
+          backendUser = BackendUser.fromMap(
+            jsonDecode(cachedJson) as Map<String, dynamic>,
+          );
+          cachedAvatarPath = await _profileCache.loadAvatarLocalPath();
+        } catch (_) {}
+      }
+
       try {
         if (widget.migrateLocalOnAuth) {
           await _migrateLocalBelieversToServer(localItems);
         }
         backendUser = BackendUser.fromMap(await _backendApi.me());
+        await _profileCache.saveUserJson(jsonEncode(backendUser.toMap()));
+        cachedAvatarPath = await _profileCache.syncAvatar(
+          avatarUrl: backendUser.avatarUrl,
+          api: _backendApi,
+          resolveUrl: _resolveAvatarUrl,
+        );
         final methods = await _backendApi.getMethods();
         _cacheRemoteMethods(methods);
         final remoteBelievers = await _backendApi.getMyBelievers();
@@ -590,7 +2387,7 @@ class _HomeScreenState extends State<HomeScreen> {
           items.map((e) => jsonEncode(e.toMap())).toList(),
         );
       } catch (_) {
-        // Keep local data when backend auth/token/network is unavailable.
+        // Keep cached profile and local data when backend is unavailable.
       } finally {
         if (widget.migrateLocalOnAuth) {
           widget.onMigrationHandled();
@@ -598,28 +2395,76 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    // Map should show absolutely all believers (and their testimonies),
+    // not only the ones owned by the current user.
+    try {
+      final remoteAll = await _backendApi.getAllBelievers();
+      mapItems = remoteAll.map(_fromBackendBeliever).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    } catch (_) {
+      // Fallback: keep whatever we already have (local/my believers).
+    }
+
     final dashboard = await _loadDashboardData();
+
+    // Load outreach statistics
+    List<OutreachStatEntry> allOutreachStats = [];
+    List<OutreachStatEntry> myOutreachStats = [];
+    try {
+      final raw = await _backendApi.getAllOutreachStatistics();
+      allOutreachStats = raw.map(OutreachStatEntry.fromMap).toList();
+    } catch (_) {}
+
+    if (_backendApi.hasAuth) {
+      try {
+        final rawMy = await _backendApi.getMyOutreachStatistics();
+        myOutreachStats = rawMy.map(OutreachStatEntry.fromMap).toList()
+          ..sort((a, b) => b.outreachDate.compareTo(a.outreachDate));
+      } catch (_) {}
+    }
 
     setState(() {
       _list
         ..clear()
         ..addAll(items);
+      _mapList
+        ..clear()
+        ..addAll(mapItems);
       _backendUser = backendUser;
+      _cachedAvatarPath = cachedAvatarPath;
       _heardGospelCount = dashboard.heard;
       _acceptedJesusCount = dashboard.accepted;
-      _testimonyOfDay = dashboard.testimony;
-      _testimonyAuthor = dashboard.author;
+      _latestTestimonies = dashboard.testimonies;
       _dashboardLoading = false;
       _loading = false;
+      _allOutreachStats = allOutreachStats;
+      _myOutreachStats = myOutreachStats;
+      _outreachStatsLoading = false;
     });
   }
 
-  Future<({int heard, int accepted, String? testimony, String? author})>
+  Future<void> _persistProfileCache(
+    BackendUser user, {
+    String? avatarFilePath,
+  }) async {
+    await _profileCache.saveUserJson(jsonEncode(user.toMap()));
+    final avatarPath = avatarFilePath != null
+        ? await _profileCache.saveAvatarFromLocalFile(avatarFilePath)
+        : await _profileCache.syncAvatar(
+            avatarUrl: user.avatarUrl,
+            api: _backendApi,
+            resolveUrl: _resolveAvatarUrl,
+          );
+    if (mounted) {
+      setState(() => _cachedAvatarPath = avatarPath);
+    }
+  }
+
+  Future<({int heard, int accepted, List<LatestTestimony> testimonies})>
   _loadDashboardData() async {
     var heard = 0;
     var accepted = 0;
-    String? testimony;
-    String? author;
+    var testimonies = <LatestTestimony>[];
 
     try {
       heard = (await _backendApi.getAllBelievers()).length;
@@ -630,22 +2475,60 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
 
     try {
-      final day = await _backendApi.getTestimonyOfDay();
-      final text = (day['testimony'] as String? ?? '').trim();
-      if (text.isNotEmpty) {
-        testimony = text;
-        final name = (day['name'] as String? ?? '').trim();
-        author = name.isEmpty ? null : name;
-      }
-    } on BackendApiException catch (e) {
-      if (e.statusCode == 404) testimony = null;
+      final latest = await _backendApi.getLatestBelievers();
+      testimonies =
+          latest
+              .map(_latestTestimonyFromRaw)
+              .whereType<LatestTestimony>()
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     } catch (_) {}
 
-    return (
-      heard: heard,
-      accepted: accepted,
-      testimony: testimony,
-      author: author,
+    if (testimonies.isEmpty) {
+      try {
+        final day = await _backendApi.getTestimonyOfDay();
+        final text = (day['testimony'] as String? ?? '').trim();
+        if (text.isNotEmpty) {
+          final name = (day['name'] as String? ?? '').trim();
+          final ownerMap = day['owner'] as Map<String, dynamic>?;
+          final ownerName = (ownerMap?['name'] as String? ?? '').trim();
+          final ownerAvatar = ownerMap?['avatar_url'] as String?;
+          testimonies = [
+            LatestTestimony(
+              text: text,
+              author: name.isEmpty ? null : name,
+              addedByName: ownerName.isEmpty ? null : ownerName,
+              addedByAvatarUrl: ownerAvatar,
+              createdAt: DateTime.now(),
+            ),
+          ];
+        }
+      } on BackendApiException catch (e) {
+        if (e.statusCode == 404) testimonies = [];
+      } catch (_) {}
+    }
+
+    return (heard: heard, accepted: accepted, testimonies: testimonies);
+  }
+
+  LatestTestimony? _latestTestimonyFromRaw(Map<String, dynamic> raw) {
+    final text = (raw['testimony'] as String? ?? '').trim();
+    if (text.isEmpty) return null;
+    final author = (raw['name'] as String? ?? '').trim();
+    final metAt = (raw['met_at'] as String? ?? '').trim();
+    final createdAtRaw = (raw['created_at'] as String? ?? '').trim();
+    final parsed = DateTime.tryParse(
+      createdAtRaw.isNotEmpty ? createdAtRaw : metAt,
+    );
+    final ownerMap = raw['owner'] as Map<String, dynamic>?;
+    final addedByName = (ownerMap?['name'] as String? ?? '').trim();
+    final addedByAvatarUrl = ownerMap?['avatar_url'] as String?;
+    return LatestTestimony(
+      text: text,
+      author: author.isEmpty ? null : author,
+      addedByName: addedByName.isEmpty ? null : addedByName,
+      addedByAvatarUrl: addedByAvatarUrl,
+      createdAt: parsed ?? DateTime.now(),
     );
   }
 
@@ -721,7 +2604,9 @@ class _HomeScreenState extends State<HomeScreen> {
         map = await _backendApi.uploadMyAvatar(result.avatarPath!);
       }
       if (!mounted) return;
-      setState(() => _backendUser = BackendUser.fromMap(map));
+      final updated = BackendUser.fromMap(map);
+      setState(() => _backendUser = updated);
+      await _persistProfileCache(updated, avatarFilePath: result.avatarPath);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(S(widget.language).saved)));
@@ -758,8 +2643,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _heardGospelCount = dashboard.heard;
       _acceptedJesusCount = dashboard.accepted;
-      _testimonyOfDay = dashboard.testimony;
-      _testimonyAuthor = dashboard.author;
+      _latestTestimonies = dashboard.testimonies;
     });
   }
 
@@ -778,8 +2662,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _heardGospelCount = dashboard.heard;
       _acceptedJesusCount = dashboard.accepted;
-      _testimonyOfDay = dashboard.testimony;
-      _testimonyAuthor = dashboard.author;
+      _latestTestimonies = dashboard.testimonies;
     });
   }
 
@@ -800,8 +2683,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _heardGospelCount = dashboard.heard;
       _acceptedJesusCount = dashboard.accepted;
-      _testimonyOfDay = dashboard.testimony;
-      _testimonyAuthor = dashboard.author;
+      _latestTestimonies = dashboard.testimonies;
     });
   }
 
@@ -961,47 +2843,173 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _saveOutreachStats({
+    int? statisticsId,
+    required String outreachDate,
+    required int gospelsTold,
+    required int salvationPrayedUnreachable,
+    required int scripturesDistributed,
+    required int healingsDeliverances,
+  }) async {
+    if (statisticsId == null) {
+      await _backendApi.createOutreachStatistics(
+        outreachDate: outreachDate,
+        gospelsTold: gospelsTold,
+        salvationPrayedUnreachable: salvationPrayedUnreachable,
+        scripturesDistributed: scripturesDistributed,
+        healingsDeliverances: healingsDeliverances,
+      );
+    } else {
+      await _backendApi.patchOutreachStatistics(
+        statisticsId,
+        outreachDate: outreachDate,
+        gospelsTold: gospelsTold,
+        salvationPrayedUnreachable: salvationPrayedUnreachable,
+        scripturesDistributed: scripturesDistributed,
+        healingsDeliverances: healingsDeliverances,
+      );
+    }
+
+    await _refreshOutreachStats();
+  }
+
+  Future<void> _deleteOutreachStats(int statisticsId) async {
+    await _backendApi.deleteOutreachStatistics(statisticsId);
+    await _refreshOutreachStats();
+  }
+
+  Future<void> _refreshOutreachStats() async {
+    final rawAll = await _backendApi.getAllOutreachStatistics();
+    final rawMy = await _backendApi.getMyOutreachStatistics();
+
+    setState(() {
+      _allOutreachStats = rawAll.map(OutreachStatEntry.fromMap).toList()
+        ..sort((a, b) => b.outreachDate.compareTo(a.outreachDate));
+      _myOutreachStats = rawMy.map(OutreachStatEntry.fromMap).toList()
+        ..sort((a, b) => b.outreachDate.compareTo(a.outreachDate));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final tr = S(widget.language);
+
+    final pages = [
+      DashboardPage(
+        tr: tr,
+        heardGospelCount: _heardGospelCount,
+        acceptedJesusCount: _acceptedJesusCount,
+        latestTestimonies: _latestTestimonies,
+        loading: _dashboardLoading,
+        allOutreachStats: _allOutreachStats, // новое
+        outreachStatsLoading: _outreachStatsLoading, // новое
+        onSettings: _openSettings,
+        backendApi: _backendApi,
+      ),
+
+      BelieversPage(
+        tr: tr,
+        believers: _list,
+        loading: _loading,
+        onAdd: _add,
+        onDelete: _delete,
+        onStage: _updateStage,
+        onSettings: _openSettings,
+      ),
+      EvangelismMethodsPage(tr: tr, onSettings: _openSettings),
+      MapPage(tr: tr, believers: _mapList, onSettings: _openSettings),
+      ProfilePage(
+        tr: tr,
+        backendUser: _backendUser,
+        backendAvatarUrl: _resolveAvatarUrl(_backendUser?.avatarUrl),
+        cachedAvatarPath: _cachedAvatarPath,
+        isAuthenticated: widget.isAuthenticated,
+        believers: _list,
+        myOutreachStats: _myOutreachStats,
+        onOpenAuth: widget.onOpenAuth,
+        onEditAccount: _editAccountProfile,
+        onSaveOutreachStats: ({
+          int? statisticsId,
+          required String outreachDate,
+          required int gospelsTold,
+          required int salvationPrayedUnreachable,
+          required int scripturesDistributed,
+          required int healingsDeliverances,
+        }) => _saveOutreachStats(
+          statisticsId: statisticsId,
+          outreachDate: outreachDate,
+          gospelsTold: gospelsTold,
+          salvationPrayedUnreachable: salvationPrayedUnreachable,
+          scripturesDistributed: scripturesDistributed,
+          healingsDeliverances: healingsDeliverances,
+        ),
+        onDeleteOutreachStats: _deleteOutreachStats,
+        onLogout: widget.onLogout,
+        onSettings: _openSettings,
+      ),
+    ];
+
+    if (_isApple) {
+      final theme = Theme.of(context);
+      final tabItems = [
+        _AppleTabItem(
+          icon: CupertinoIcons.square_grid_2x2,
+          activeIcon: CupertinoIcons.square_grid_2x2_fill,
+          label: tr.homeNav,
+        ),
+        _AppleTabItem(
+          icon: CupertinoIcons.person_2,
+          activeIcon: CupertinoIcons.person_2_fill,
+          label: tr.believersNav,
+        ),
+        _AppleTabItem(
+          icon: CupertinoIcons.book,
+          activeIcon: CupertinoIcons.book_fill,
+          label: tr.methodsNav,
+        ),
+        _AppleTabItem(
+          icon: CupertinoIcons.map,
+          activeIcon: CupertinoIcons.map_fill,
+          label: tr.mapNav,
+        ),
+        _AppleTabItem(
+          icon: CupertinoIcons.person_circle,
+          activeIcon: CupertinoIcons.person_circle_fill,
+          label: tr.profileNav,
+        ),
+      ];
+      return Scaffold(
+        backgroundColor: _iosBackground(context),
+        extendBody: true,
+        body: SafeArea(
+          bottom: false,
+          child: IndexedStack(index: _tab, children: pages),
+        ),
+        bottomNavigationBar: _AppleGlassTabBar(
+          items: tabItems,
+          currentIndex: _tab,
+          onTap: (i) => setState(() => _tab = i),
+          tint: theme.colorScheme.primary,
+        ),
+        floatingActionButton: _tab == 1
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 76),
+                child: FloatingActionButton(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: const CircleBorder(),
+                  elevation: 6,
+                  onPressed: _add,
+                  child: const Icon(CupertinoIcons.add, size: 26),
+                ),
+              )
+            : null,
+      );
+    }
+
     return Scaffold(
       body: SafeArea(
-        child: IndexedStack(
-          index: _tab,
-          children: [
-            DashboardPage(
-              tr: tr,
-              heardGospelCount: _heardGospelCount,
-              acceptedJesusCount: _acceptedJesusCount,
-              testimonyText: _testimonyOfDay,
-              testimonyAuthor: _testimonyAuthor,
-              loading: _dashboardLoading,
-              onSettings: _openSettings,
-            ),
-            BelieversPage(
-              tr: tr,
-              believers: _list,
-              loading: _loading,
-              onAdd: _add,
-              onDelete: _delete,
-              onStage: _updateStage,
-              onSettings: _openSettings,
-            ),
-            EvangelismMethodsPage(tr: tr, onSettings: _openSettings),
-            MapPage(tr: tr, believers: _list, onSettings: _openSettings),
-            ProfilePage(
-              tr: tr,
-              backendUser: _backendUser,
-              backendAvatarUrl: _resolveAvatarUrl(_backendUser?.avatarUrl),
-              isAuthenticated: widget.isAuthenticated,
-              believers: _list,
-              onOpenAuth: widget.onOpenAuth,
-              onEditAccount: _editAccountProfile,
-              onLogout: widget.onLogout,
-              onSettings: _openSettings,
-            ),
-          ],
-        ),
+        child: IndexedStack(index: _tab, children: pages),
       ),
       bottomNavigationBar: NavigationBar(
         height: 68,
@@ -1049,24 +3057,183 @@ class DashboardPage extends StatelessWidget {
   final S tr;
   final int heardGospelCount;
   final int acceptedJesusCount;
-  final String? testimonyText;
-  final String? testimonyAuthor;
+  final List<LatestTestimony> latestTestimonies;
   final bool loading;
   final VoidCallback onSettings;
+  final List<OutreachStatEntry> allOutreachStats;
+  final bool outreachStatsLoading;
+  final BackendApi backendApi;
+
   const DashboardPage({
     super.key,
     required this.tr,
     required this.heardGospelCount,
     required this.acceptedJesusCount,
-    required this.testimonyText,
-    required this.testimonyAuthor,
+    required this.latestTestimonies,
     required this.loading,
     required this.onSettings,
+    required this.allOutreachStats,
+    required this.outreachStatsLoading,
+    required this.backendApi,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (_isApple) return _buildApple(context);
+    return _buildMaterial(context);
+  }
+
+  Widget _buildApple(BuildContext context) {
     final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final latest = latestTestimonies.isEmpty ? null : latestTestimonies.first;
+    final hasLatest = latest != null;
+
+    return ListView(
+      padding: const EdgeInsets.only(top: 8, bottom: 110),
+      children: [
+        _AppleLargeTitle(
+          title: tr.appTitle,
+          subtitle: tr.homeWitnessSub,
+          onSettings: onSettings,
+        ),
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.all(48),
+            child: Center(child: CupertinoActivityIndicator(radius: 14)),
+          )
+        else ...[
+          _AppleTestimonyHero(
+            tint: primary,
+            label: tr.latestTestimony,
+            text: latest?.text ?? tr.noLatestTestimonies,
+            author: latest?.author,
+            addedByName: latest?.addedByName,
+            addedByAvatarUrl: latest?.addedByAvatarUrl,
+            onTap: hasLatest
+                ? () => _openLatestTestimoniesSheet(context)
+                : null,
+          ),
+          const SizedBox(height: 22),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              tr.statisticsHeader.toUpperCase(),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _iosSecondaryLabel(context),
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AppleStatCard(
+                    icon: CupertinoIcons.person_3_fill,
+                    tint: const Color(0xFF007AFF),
+                    value: _formatBigNumber(heardGospelCount),
+                    label: tr.heardGospelCountLabel,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _AppleStatCard(
+                    icon: CupertinoIcons.heart_fill,
+                    tint: const Color(0xFFFF3B30),
+                    value: _formatBigNumber(acceptedJesusCount),
+                    label: tr.acceptedJesusCountLabel,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              tr.outreachStatsHeader.toUpperCase(),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _iosSecondaryLabel(context),
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+          if (outreachStatsLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CupertinoActivityIndicator(radius: 12)),
+            )
+          else if (allOutreachStats.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: _iosCardBackground(context),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    tr.outreachStatsEmpty,
+                    style: TextStyle(
+                      color: _iosSecondaryLabel(context),
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: allOutreachStats
+                    .map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _iosCardBackground(context),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: _DashboardOutreachRow(
+                            entry: entry,
+                            backendApi: backendApi,
+                            tr: tr,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  static String _formatBigNumber(int n) {
+    if (n >= 1000000) {
+      final v = n / 1000000;
+      return '${v.toStringAsFixed(v >= 10 ? 0 : 1)}M';
+    }
+    if (n >= 10000) {
+      final v = n / 1000;
+      return '${v.toStringAsFixed(v >= 100 ? 0 : 1)}K';
+    }
+    return '$n';
+  }
+
+  Widget _buildMaterial(BuildContext context) {
+    final theme = Theme.of(context);
+    final latest = latestTestimonies.isEmpty ? null : latestTestimonies.first;
+    final hasLatest = latest != null;
     Widget longMetric({
       required IconData icon,
       required String value,
@@ -1129,60 +3296,98 @@ class DashboardPage extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
                   borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    colors: [
-                      theme.colorScheme.primary.withOpacity(0.16),
-                      theme.colorScheme.primary.withOpacity(0.05),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  border: Border.all(
-                    color: theme.colorScheme.primary.withOpacity(0.26),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                  onTap: hasLatest
+                      ? () => _openLatestTestimoniesSheet(context)
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      gradient: LinearGradient(
+                        colors: [
+                          theme.colorScheme.primary.withOpacity(0.16),
+                          theme.colorScheme.primary.withOpacity(0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(
+                        color: theme.colorScheme.primary.withOpacity(0.26),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.auto_stories_rounded,
-                          color: theme.colorScheme.primary,
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.auto_stories_rounded,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                tr.latestTestimony,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            if (hasLatest)
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                color: theme.colorScheme.primary,
+                              ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(height: 10),
                         Text(
-                          tr.testimonyOfDay,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
+                          '“${latest?.text ?? tr.noLatestTestimonies}”',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            height: 1.38,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
+                        if ((latest?.addedByName?.isNotEmpty == true) ||
+                            (latest?.author?.isNotEmpty == true)) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 11,
+                                backgroundColor: theme.colorScheme.primary
+                                    .withOpacity(0.15),
+                                child: Icon(
+                                  Icons.person_rounded,
+                                  size: 13,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  (latest!.addedByName?.isNotEmpty == true
+                                      ? latest.addedByName
+                                      : latest.author)!,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '“${testimonyText ?? tr.noTestimonyToday}”',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        height: 1.38,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (testimonyAuthor != null &&
-                        testimonyAuthor!.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        '— $testimonyAuthor',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -1201,9 +3406,133 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Text(
+                    tr.outreachStatsHeader,
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (outreachStatsLoading)
+                const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+              else if (allOutreachStats.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    tr.outreachStatsEmpty,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                Column(
+                  children: allOutreachStats.map((entry) {
+                    final avatarUrl = entry.userAvatarUrl != null
+                        ? backendApi.resolveUrl(entry.userAvatarUrl!).toString()
+                        : null;
+                    final dateStr = DateFormat('dd.MM.yyyy').format(entry.outreachDate);
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: theme.colorScheme.primary.withOpacity(0.14),
+                                  foregroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                                  child: avatarUrl == null
+                                      ? Text(
+                                          entry.userName.isNotEmpty ? entry.userName[0].toUpperCase() : '?',
+                                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: theme.colorScheme.primary),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(entry.userName, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                                      Text(dateStr, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                _matMiniStat(context, theme, Icons.campaign_rounded, const Color(0xFF34C759), '${entry.gospelsTold}', tr.gospelsTold),
+                                const SizedBox(width: 8),
+                                _matMiniStat(context, theme, Icons.favorite_rounded, const Color(0xFFFF3B30), '${entry.salvationPrayedUnreachable}', tr.salvationPrayedUnreachable),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                _matMiniStat(context, theme, Icons.menu_book_rounded, const Color(0xFFFF9500), '${entry.scripturesDistributed}', tr.scripturesDistributed),
+                                const SizedBox(width: 8),
+                                _matMiniStat(context, theme, Icons.health_and_safety_rounded, const Color(0xFF5856D6), '${entry.healingsDeliverances}', tr.healingsDeliverances),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
             ],
           ),
       ],
+    );
+  }
+
+  Widget _matMiniStat(BuildContext context, ThemeData theme, IconData icon, Color color, String value, String label) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.09),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color)),
+                  Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openLatestTestimoniesSheet(BuildContext context) {
+    if (latestTestimonies.isEmpty) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LatestTestimoniesSheet(tr: tr, items: latestTestimonies),
     );
   }
 }
@@ -1229,6 +3558,73 @@ class BelieversPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isApple) return _buildApple(context);
+    return _buildMaterial(context);
+  }
+
+  Widget _buildApple(BuildContext context) {
+    final children = <Widget>[
+      _AppleLargeTitle(
+        title: tr.believers,
+        subtitle: tr.believersSub,
+        onSettings: onSettings,
+      ),
+    ];
+
+    // Legend section
+    children.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: BelieverStage.values
+                .map(
+                  (s) => Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: _LegendChip(stage: s, lang: tr.lang),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ),
+    );
+
+    if (loading) {
+      children.add(
+        const Padding(
+          padding: EdgeInsets.all(48),
+          child: Center(child: CupertinoActivityIndicator(radius: 14)),
+        ),
+      );
+    } else if (believers.isEmpty) {
+      children.add(const SizedBox(height: 16));
+      children.add(_Empty(tr: tr, onAdd: onAdd));
+    } else {
+      children.add(const SizedBox(height: 8));
+      children.add(
+        _AppleSection(
+          header: tr.list,
+          children: believers
+              .map(
+                (b) => _AppleBelieverRow(
+                  item: b,
+                  lang: tr.lang,
+                  onDelete: () => onDelete(b),
+                  onStage: (s) => onStage(b, s),
+                ),
+              )
+              .toList(),
+        ),
+      );
+    }
+    children.add(const SizedBox(height: 110));
+
+    return ListView(padding: const EdgeInsets.only(top: 8), children: children);
+  }
+
+  Widget _buildMaterial(BuildContext context) {
     final theme = Theme.of(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
@@ -1280,6 +3676,272 @@ class BelieversPage extends StatelessWidget {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// iOS-style expandable row for a single believer.
+class _AppleBelieverRow extends StatefulWidget {
+  final NewBeliever item;
+  final AppLanguage lang;
+  final VoidCallback onDelete;
+  final ValueChanged<BelieverStage> onStage;
+  const _AppleBelieverRow({
+    required this.item,
+    required this.lang,
+    required this.onDelete,
+    required this.onStage,
+  });
+
+  @override
+  State<_AppleBelieverRow> createState() => _AppleBelieverRowState();
+}
+
+class _AppleBelieverRowState extends State<_AppleBelieverRow> {
+  bool _expanded = false;
+
+  Future<void> _confirmDelete() async {
+    final tr = S(widget.lang);
+    final ok = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(
+          widget.lang == AppLanguage.ru ? 'Удалить запись?' : 'Delete entry?',
+        ),
+        content: Text(widget.item.name),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(tr.cancel),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(widget.lang == AppLanguage.ru ? 'Удалить' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) widget.onDelete();
+  }
+
+  void _showStagePicker() {
+    final tr = S(widget.lang);
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(tr.stage),
+        actions: BelieverStage.values
+            .map(
+              (s) => CupertinoActionSheetAction(
+                isDefaultAction: s == widget.item.stage,
+                onPressed: () {
+                  widget.onStage(s);
+                  Navigator.of(ctx).pop();
+                },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _Dot(stage: s, size: 10),
+                    const SizedBox(width: 10),
+                    Text(stageFull(s, widget.lang)),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(tr.cancel),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tr = S(widget.lang);
+    final stageColorVal = stageColor(widget.item.stage);
+    final item = widget.item;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: stageColorVal.withOpacity(0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: _Dot(stage: item.stage, size: 14),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        stageShort(item.stage, widget.lang),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _iosSecondaryLabel(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: _expanded ? 0.25 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    CupertinoIcons.chevron_forward,
+                    size: 16,
+                    color: CupertinoColors.tertiaryLabel.resolveFrom(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _Pill(
+                      icon: CupertinoIcons.calendar,
+                      text: fmtDate(item.createdAt, widget.lang),
+                    ),
+                    if (item.telegram.isNotEmpty)
+                      _Pill(
+                        icon: CupertinoIcons.paperplane,
+                        text: item.telegram,
+                        onTap: () => openTelegram(item.telegram),
+                      ),
+                    if (item.phone.isNotEmpty)
+                      _Pill(
+                        icon: CupertinoIcons.phone,
+                        text: formatPhoneForDisplay(item.phone),
+                        onTap: () => callPhone(item.phone),
+                      ),
+                    if (item.place != null && item.place!.isNotEmpty)
+                      _Pill(
+                        icon: CupertinoIcons.location_solid,
+                        text: item.place!,
+                      )
+                    else if (item.hasLocation)
+                      _Pill(
+                        icon: CupertinoIcons.location_solid,
+                        text:
+                            '${item.latitude!.toStringAsFixed(3)}, ${item.longitude!.toStringAsFixed(3)}',
+                      ),
+                    _Pill(
+                      icon: CupertinoIcons.book,
+                      text:
+                          item.evangelismMethod == EvangelismMethod.custom &&
+                              item.customEvangelismMethod.isNotEmpty
+                          ? item.customEvangelismMethod
+                          : evangelismMethodLabel(
+                              item.evangelismMethod,
+                              S(widget.lang),
+                            ),
+                    ),
+                  ],
+                ),
+                if (item.testimony.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    item.testimony,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                if (item.note.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    item.note,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _iosSecondaryLabel(context),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        onPressed: _showStagePicker,
+                        child: Text(
+                          tr.stage,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 14,
+                      ),
+                      color: CupertinoColors.destructiveRed
+                          .resolveFrom(context)
+                          .withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      onPressed: _confirmDelete,
+                      child: Icon(
+                        CupertinoIcons.delete,
+                        size: 18,
+                        color: CupertinoColors.destructiveRed.resolveFrom(
+                          context,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          crossFadeState: _expanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 220),
+        ),
       ],
     );
   }
@@ -1339,6 +4001,372 @@ class PlaceholderPage extends StatelessWidget {
   }
 }
 
+class _ZoomableMethodAssetImage extends StatefulWidget {
+  final String asset;
+  final String semanticLabel;
+  final String? imageMissing;
+  final double? width;
+  final BoxFit fit;
+  final bool immersive;
+  final VoidCallback? onOpenFullscreen;
+  final ValueChanged<bool>? onZoomChanged;
+  final void Function(ScaleUpdateDetails)? onInteractionUpdate;
+  final void Function(ScaleEndDetails)? onInteractionEnd;
+
+  const _ZoomableMethodAssetImage({
+    required this.asset,
+    required this.semanticLabel,
+    this.imageMissing,
+    this.width,
+    this.fit = BoxFit.fitWidth,
+    this.immersive = false,
+    this.onOpenFullscreen,
+    this.onZoomChanged,
+    this.onInteractionUpdate,
+    this.onInteractionEnd,
+  });
+
+  @override
+  State<_ZoomableMethodAssetImage> createState() =>
+      _ZoomableMethodAssetImageState();
+}
+
+class _ZoomableMethodAssetImageState extends State<_ZoomableMethodAssetImage>
+    with SingleTickerProviderStateMixin {
+  static const _doubleTapScale = 2.75;
+  static const _zoomEpsilon = 0.02;
+
+  final _transformController = TransformationController();
+  late final AnimationController _zoomAnimationController;
+  Animation<Matrix4>? _zoomAnimation;
+  double _scale = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _zoomAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
+    _transformController.addListener(_onTransformChanged);
+    _zoomAnimationController.addListener(_onZoomAnimationTick);
+    _zoomAnimationController.addStatusListener(_onZoomAnimationStatus);
+  }
+
+  @override
+  void dispose() {
+    _transformController.removeListener(_onTransformChanged);
+    _zoomAnimationController.removeListener(_onZoomAnimationTick);
+    _transformController.dispose();
+    _zoomAnimationController.dispose();
+    super.dispose();
+  }
+
+  void _onTransformChanged() {
+    if (_zoomAnimationController.isAnimating) return;
+    final next = _transformController.value.getMaxScaleOnAxis();
+    if ((next - _scale).abs() < _zoomEpsilon) return;
+    final wasZoomed = _isZoomed;
+    setState(() => _scale = next);
+    if (_isZoomed != wasZoomed) widget.onZoomChanged?.call(_isZoomed);
+  }
+
+  void _onZoomAnimationTick() {
+    final animation = _zoomAnimation;
+    if (animation == null) return;
+    _transformController.value = animation.value;
+  }
+
+  bool get _isZoomed => _scale > 1 + _zoomEpsilon;
+
+  void _resetZoom() {
+    if (!_isZoomed) return;
+    _animateTo(Matrix4.identity());
+  }
+
+  void _onZoomAnimationStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    final wasZoomed = _isZoomed;
+    setState(() => _scale = _transformController.value.getMaxScaleOnAxis());
+    if (_isZoomed != wasZoomed) widget.onZoomChanged?.call(_isZoomed);
+  }
+
+  void _animateTo(Matrix4 target) {
+    _zoomAnimation =
+        Matrix4Tween(
+          begin: _transformController.value.clone(),
+          end: target,
+        ).animate(
+          CurvedAnimation(
+            parent: _zoomAnimationController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+    _zoomAnimationController.forward(from: 0);
+  }
+
+  void _handleDoubleTap(TapDownDetails details) {
+    final target = _isZoomed
+        ? Matrix4.identity()
+        : (Matrix4.identity()
+            ..translate(details.localPosition.dx, details.localPosition.dy)
+            ..scale(_doubleTapScale)
+            ..translate(-details.localPosition.dx, -details.localPosition.dy));
+    _animateTo(target);
+  }
+
+  void _handleTap() {
+    if (_isZoomed) {
+      _resetZoom();
+      return;
+    }
+    widget.onOpenFullscreen?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final errorStyle = widget.immersive
+        ? Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(color: Colors.white70)
+        : Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          );
+
+    final image = Image.asset(
+      widget.asset,
+      semanticLabel: widget.semanticLabel,
+      width: widget.width,
+      fit: widget.fit,
+      errorBuilder: (context, error, stackTrace) => Center(
+        child: Padding(
+          padding: EdgeInsets.all(widget.immersive ? 28 : 24),
+          child: Text(
+            widget.imageMissing ?? '',
+            textAlign: TextAlign.center,
+            style: errorStyle,
+          ),
+        ),
+      ),
+    );
+
+    final viewer = InteractiveViewer(
+      transformationController: _transformController,
+      minScale: 1,
+      maxScale: 5,
+      panEnabled: _isZoomed,
+      scaleEnabled: true,
+      clipBehavior: Clip.none,
+      boundaryMargin: widget.immersive
+          ? const EdgeInsets.all(48)
+          : const EdgeInsets.all(20),
+      onInteractionUpdate: widget.onInteractionUpdate,
+      onInteractionEnd: widget.onInteractionEnd,
+      child: image,
+    );
+
+    final zoomable = GestureDetector(
+      onTap: widget.immersive || widget.onOpenFullscreen != null
+          ? _handleTap
+          : null,
+      onDoubleTapDown: _handleDoubleTap,
+      behavior: HitTestBehavior.deferToChild,
+      child: viewer,
+    );
+
+    if (!widget.immersive) return zoomable;
+
+    final size = MediaQuery.sizeOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: Center(
+            child: GestureDetector(
+              onTap: () {},
+              behavior: HitTestBehavior.opaque,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: size.width,
+                  maxHeight: size.height,
+                ),
+                child: zoomable,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FullscreenEvangelAsset extends StatefulWidget {
+  final String asset;
+  final String semanticLabel;
+  final String imageMissing;
+
+  const _FullscreenEvangelAsset({
+    required this.asset,
+    required this.semanticLabel,
+    required this.imageMissing,
+  });
+
+  @override
+  State<_FullscreenEvangelAsset> createState() =>
+      _FullscreenEvangelAssetState();
+}
+
+class _FullscreenEvangelAssetState extends State<_FullscreenEvangelAsset>
+    with SingleTickerProviderStateMixin {
+  Offset _drag = Offset.zero;
+  double _bgOpacity = 1.0;
+  bool _isZoomed = false;
+  late final AnimationController _snapCtrl;
+
+  static const _dismissDist = 90.0;
+  static const _dismissVelocity = 450.0;
+  static const _opacityBase = 200.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+  }
+
+  @override
+  void dispose() {
+    _snapCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onZoomChanged(bool zoomed) {
+    if (_isZoomed == zoomed) return;
+    setState(() {
+      _isZoomed = zoomed;
+      if (!zoomed) {
+        _drag = Offset.zero;
+        _bgOpacity = 1.0;
+      }
+    });
+  }
+
+  void _onInteractionUpdate(ScaleUpdateDetails d) {
+    // only single-finger pan when not zoomed
+    if (_isZoomed || d.pointerCount != 1) return;
+    _snapCtrl.stop();
+    setState(() {
+      _drag += d.focalPointDelta;
+      _bgOpacity = (1.0 - _drag.distance / _opacityBase).clamp(0.1, 1.0);
+    });
+  }
+
+  void _onInteractionEnd(ScaleEndDetails d) {
+    if (_isZoomed) return;
+    final speed = d.velocity.pixelsPerSecond.distance;
+    if (speed > _dismissVelocity || _drag.distance > _dismissDist) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final startDrag = _drag;
+    final anim = Tween<Offset>(begin: startDrag, end: Offset.zero).animate(
+      CurvedAnimation(parent: _snapCtrl, curve: Curves.easeOutCubic),
+    );
+    anim.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        _drag = anim.value;
+        _bgOpacity = (1.0 - _drag.distance / _opacityBase).clamp(0.1, 1.0);
+      });
+    });
+    _snapCtrl.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: _bgOpacity),
+      child: Transform.translate(
+        offset: _drag,
+        child: SafeArea(
+          child: _ZoomableMethodAssetImage(
+            asset: widget.asset,
+            semanticLabel: widget.semanticLabel,
+            imageMissing: widget.imageMissing,
+            fit: BoxFit.contain,
+            immersive: true,
+            onZoomChanged: _onZoomChanged,
+            onInteractionUpdate: _onInteractionUpdate,
+            onInteractionEnd: _onInteractionEnd,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FourSignsCard extends StatelessWidget {
+  final String number;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String body;
+  final ThemeData theme;
+
+  const _FourSignsCard({
+    required this.number,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.body,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.18),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '$number. $title',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(body, style: theme.textTheme.bodyMedium?.copyWith(height: 1.52)),
+        ],
+      ),
+    );
+  }
+}
+
 class EvangelismMethodsPage extends StatefulWidget {
   final S tr;
   final VoidCallback? onSettings;
@@ -1351,9 +4379,210 @@ class EvangelismMethodsPage extends StatefulWidget {
 class _EvangelismMethodsPageState extends State<EvangelismMethodsPage> {
   int _methodIndex = 0;
 
-  static const _fourSignsAsset = 'assets/four_signs.jpeg';
+  static const _fourSignsDarkAsset = 'assets/four_signs_dark.PNG';
+  static const _fourSignsLightAsset = 'assets/four_signs_light.PNG';
   static const _jesusDoor1 = 'assets/jesus_on_the_door_1.PNG';
   static const _jesusDoor2 = 'assets/jesus_on_the_door_2.PNG';
+
+  void _showFourSignsDetails(BuildContext context) {
+    final tr = widget.tr;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: _isApple
+                    ? _iosCardBackground(context)
+                    : theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Drag handle
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurface.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  // Title
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _isApple
+                              ? CupertinoIcons.info_circle_fill
+                              : Icons.info_rounded,
+                          color: theme.colorScheme.primary,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            tr.methodFourSignsTab,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: Icon(
+                            _isApple
+                                ? CupertinoIcons.xmark_circle_fill
+                                : Icons.cancel_rounded,
+                            color: theme.colorScheme.onSurface.withOpacity(0.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 20, indent: 20, endIndent: 20),
+                  // Scrollable content
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                      children: [
+                        // Sign 1 — Love
+                        _FourSignsCard(
+                          number: '1',
+                          icon: _isApple
+                              ? CupertinoIcons.heart_fill
+                              : Icons.favorite_rounded,
+                          color: const Color(0xFFFF3B30),
+                          title: tr.lang == AppLanguage.ru ? 'Любовь' : 'Love',
+                          body: tr.lang == AppLanguage.ru
+                              ? 'Бог сотворил весь мир, в том числе и человека с вечной душой! Он любит тебя и всех людей. Он хочет, чтобы ты узнал Его, принял Его любовь, и чтобы твоя жизнь обрела смысл.\n\n📖 «Ибо так возлюбил Бог мир, что отдал Сына Своего Единородного...» (Ин. 3:16)'
+                              : 'God created the whole world, including man with an eternal soul! He loves you and all people. He wants you to know Him, receive His love, and find meaning in your life.\n\n📖 "For God so loved the world that He gave His one and only Son..." (John 3:16)',
+                          theme: theme,
+                        ),
+                        const SizedBox(height: 12),
+                        // Sign 2 — Separation
+                        _FourSignsCard(
+                          number: '2',
+                          icon: _isApple
+                              ? CupertinoIcons.divide
+                              : Icons.remove_circle_outline_rounded,
+                          color: const Color(0xFFFF9500),
+                          title: tr.lang == AppLanguage.ru
+                              ? 'Разделение'
+                              : 'Separation',
+                          body: tr.lang == AppLanguage.ru
+                              ? 'Человек отделён от Бога из-за греха, поэтому не может почувствовать Его любовь. За грех будет справедливое наказание — смерть и вечное отлучение от Бога.\n\n📖 «Потому что возмездие за грех — смерть...» (Рим. 6:23)'
+                              : 'Man is separated from God because of sin, so he cannot feel His love. Sin brings a just punishment — death and eternal separation from God.\n\n📖 "For the wages of sin is death..." (Romans 6:23)',
+                          theme: theme,
+                        ),
+                        const SizedBox(height: 12),
+                        // Sign 3 — Jesus
+                        _FourSignsCard(
+                          number: '3',
+                          icon: _isApple
+                              ? CupertinoIcons.add
+                              : Icons.add_circle_outline_rounded,
+                          color: const Color(0xFF34C759),
+                          title: tr.lang == AppLanguage.ru ? 'Иисус' : 'Jesus',
+                          body: tr.lang == AppLanguage.ru
+                              ? 'Но Бог предложил решение — Иисус Христос, Божий Сын. Благодаря Ему мы можем восстановить отношения с Богом, почувствовать Его любовь и обрести полноценную жизнь на земле и вечную жизнь с Ним.\n\n📖 «Иисус сказал ему: Я есмь путь и истина и жизнь...» (Ин. 14:6)'
+                              : 'But God offered a solution — Jesus Christ, the Son of God. Through Him we can restore our relationship with God, experience His love, and gain abundant life on earth and eternal life with Him.\n\n📖 "Jesus answered, I am the way and the truth and the life..." (John 14:6)',
+                          theme: theme,
+                        ),
+                        const SizedBox(height: 12),
+                        // Sign 4 — Decision
+                        _FourSignsCard(
+                          number: '4',
+                          icon: _isApple
+                              ? CupertinoIcons.question_circle_fill
+                              : Icons.help_rounded,
+                          color: const Color(0xFF007AFF),
+                          title: tr.lang == AppLanguage.ru
+                              ? 'Решение'
+                              : 'Decision',
+                          body: tr.lang == AppLanguage.ru
+                              ? 'Тебе нужно сделать личный шаг веры и принять Иисуса Христа как спасителя и Господа. Он предлагает тебе радостную жизнь, полную Его любви на земле и вечную жизнь вместе с Богом.\n\n📖 «А тем, которые приняли Его, верующим во имя Его, дал власть быть чадами Божиими...» (Ин. 1:12)'
+                              : 'You need to take a personal step of faith and receive Jesus Christ as Savior and Lord. He offers you a joyful life full of His love on earth and eternal life with God.\n\n📖 "Yet to all who received Him, to those who believed in His name, He gave the right to become children of God..." (John 1:12)',
+                          theme: theme,
+                        ),
+                        const SizedBox(height: 24),
+                        // Prayer block
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withOpacity(
+                                0.25,
+                              ),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  // Icon(
+                                  //   _isApple
+                                  //       ? CupertinoIcons.hands_sparkles_fill
+                                  //       : Icons.volunteer_activism_rounded,
+                                  //   color: theme.colorScheme.primary,
+                                  //   size: 18,
+                                  // ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    tr.lang == AppLanguage.ru
+                                        ? 'Молитва принятия'
+                                        : 'Prayer of Acceptance',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                tr.lang == AppLanguage.ru
+                                    ? '«Господи Иисус, я понимаю, что я грешен и нуждаюсь в Твоём прощении. Верю, что Ты умер за мои грехи и воскрес. Я хочу отвернуться от грехов своих. Прошу Тебя войти в мою жизнь и стать моим Спасителем и Господом. Аминь.»'
+                                    : '"Lord Jesus, I know I am a sinner and need Your forgiveness. I believe You died for my sins and rose again. I want to turn from my sins. I now invite You to come into my life as my Savior and Lord. Amen."',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontStyle: FontStyle.italic,
+                                  height: 1.55,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   void _openFullscreen(
     BuildContext context,
@@ -1390,6 +4619,8 @@ class _EvangelismMethodsPageState extends State<EvangelismMethodsPage> {
   Widget build(BuildContext context) {
     final tr = widget.tr;
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final fourSignsAsset = isDark ? _fourSignsDarkAsset : _fourSignsLightAsset;
 
     Widget methodImage(String asset, String semanticLabel) {
       return LayoutBuilder(
@@ -1397,29 +4628,17 @@ class _EvangelismMethodsPageState extends State<EvangelismMethodsPage> {
           return ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: Material(
-              color: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                0.35,
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.35,
               ),
-              child: InkWell(
-                onTap: () => _openFullscreen(context, asset, semanticLabel),
-                child: Image.asset(
-                  asset,
-                  width: constraints.maxWidth,
-                  fit: BoxFit.fitWidth,
-                  semanticLabel: semanticLabel,
-                  errorBuilder: (context, error, stackTrace) => Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        tr.imageMissing,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              child: _ZoomableMethodAssetImage(
+                asset: asset,
+                semanticLabel: semanticLabel,
+                imageMissing: tr.imageMissing,
+                width: constraints.maxWidth,
+                fit: BoxFit.fitWidth,
+                onOpenFullscreen: () =>
+                    _openFullscreen(context, asset, semanticLabel),
               ),
             ),
           );
@@ -1428,7 +4647,7 @@ class _EvangelismMethodsPageState extends State<EvangelismMethodsPage> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, _isApple ? 110 : 32),
       children: [
         _PageHeader(
           title: tr.methodsPageTitle,
@@ -1436,26 +4655,47 @@ class _EvangelismMethodsPageState extends State<EvangelismMethodsPage> {
           onSettings: widget.onSettings,
         ),
         const SizedBox(height: 16),
-        SegmentedButton<int>(
-          segments: [
-            ButtonSegment<int>(
-              value: 0,
-              label: Text(tr.methodFourSignsTab),
-              icon: const Icon(Icons.draw_rounded, size: 18),
+        if (_isApple)
+          SizedBox(
+            width: double.infinity,
+            child: CupertinoSlidingSegmentedControl<int>(
+              groupValue: _methodIndex,
+              children: {
+                0: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(tr.methodFourSignsTab),
+                ),
+                1: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(tr.methodJesusDoorTab),
+                ),
+              },
+              onValueChanged: (v) {
+                if (v != null) setState(() => _methodIndex = v);
+              },
             ),
-            ButtonSegment<int>(
-              value: 1,
-              label: Text(tr.methodJesusDoorTab),
-              icon: const Icon(Icons.door_front_door_outlined, size: 18),
-            ),
-          ],
-          selected: {_methodIndex},
-          onSelectionChanged: (next) {
-            final v = next.first;
-            setState(() => _methodIndex = v);
-          },
-          showSelectedIcon: false,
-        ),
+          )
+        else
+          SegmentedButton<int>(
+            segments: [
+              ButtonSegment<int>(
+                value: 0,
+                label: Text(tr.methodFourSignsTab),
+                icon: const Icon(Icons.draw_rounded, size: 18),
+              ),
+              ButtonSegment<int>(
+                value: 1,
+                label: Text(tr.methodJesusDoorTab),
+                icon: const Icon(Icons.door_front_door_outlined, size: 18),
+              ),
+            ],
+            selected: {_methodIndex},
+            onSelectionChanged: (next) {
+              final v = next.first;
+              setState(() => _methodIndex = v);
+            },
+            showSelectedIcon: false,
+          ),
         const SizedBox(height: 20),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
@@ -1466,13 +4706,85 @@ class _EvangelismMethodsPageState extends State<EvangelismMethodsPage> {
                   key: const ValueKey('m0'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    methodImage(_fourSignsAsset, tr.methodFourSignsTab),
+                    Text(
+                      tr.methodFourSignsDesc,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    methodImage(fourSignsAsset, tr.methodFourSignsTab),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: _isApple
+                          ? CupertinoButton(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              color: theme.colorScheme.primary.withOpacity(
+                                0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              onPressed: () => _showFourSignsDetails(context),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.info_circle,
+                                    size: 18,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    tr.lang == AppLanguage.ru
+                                        ? 'Подробное пояснение'
+                                        : 'Detailed explanation',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                side: BorderSide(
+                                  color: theme.colorScheme.primary.withOpacity(
+                                    0.5,
+                                  ),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              onPressed: () => _showFourSignsDetails(context),
+                              icon: const Icon(
+                                Icons.info_outline_rounded,
+                                size: 18,
+                              ),
+                              label: Text(
+                                tr.lang == AppLanguage.ru
+                                    ? 'Подробное пояснение'
+                                    : 'Detailed explanation',
+                              ),
+                            ),
+                    ),
                   ],
                 )
               : Column(
                   key: const ValueKey('m1'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Text(
+                      tr.methodJesusDoorDesc,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     methodImage(_jesusDoor1, tr.methodJesusDoorTab),
                     const SizedBox(height: 16),
                     methodImage(_jesusDoor2, tr.methodJesusDoorTab),
@@ -1480,82 +4792,6 @@ class _EvangelismMethodsPageState extends State<EvangelismMethodsPage> {
                 ),
         ),
       ],
-    );
-  }
-}
-
-class _FullscreenEvangelAsset extends StatelessWidget {
-  final String asset;
-  final String semanticLabel;
-  final String imageMissing;
-
-  const _FullscreenEvangelAsset({
-    required this.asset,
-    required this.semanticLabel,
-    required this.imageMissing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-
-    Widget image() => Image.asset(
-      asset,
-      semanticLabel: semanticLabel,
-      width: width,
-      fit: BoxFit.fitWidth,
-      errorBuilder: (context, error, stackTrace) => Padding(
-        padding: const EdgeInsets.all(28),
-        child: Text(
-          imageMissing,
-          textAlign: TextAlign.center,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(color: Colors.white70),
-        ),
-      ),
-    );
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.pop(context),
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.92)),
-        child: SafeArea(
-          child: Stack(
-            children: [
-              Center(
-                child: GestureDetector(
-                  onTap: () {},
-                  child: InteractiveViewer(
-                    minScale: 0.85,
-                    maxScale: 5,
-                    clipBehavior: Clip.none,
-                    child: image(),
-                  ),
-                ),
-              ),
-              Align(
-                alignment: AlignmentDirectional.topEnd,
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.only(top: 4, end: 8),
-                  child: IconButton.filled(
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.16),
-                      foregroundColor: Colors.white,
-                    ),
-                    tooltip: MaterialLocalizations.of(
-                      context,
-                    ).closeButtonTooltip,
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1595,8 +4831,406 @@ class _SettingsSheetState extends State<SettingsSheet> {
     _language = widget.language;
   }
 
+  Widget _buildThemeControl(S tr, ThemeData theme) {
+    if (_isApple) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tr.themeLabel,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: CupertinoSlidingSegmentedControl<AppThemeMode>(
+              groupValue: _themeMode,
+              children: {
+                AppThemeMode.system: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(tr.sys, style: const TextStyle(fontSize: 13)),
+                ),
+                AppThemeMode.light: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(tr.light, style: const TextStyle(fontSize: 13)),
+                ),
+                AppThemeMode.dark: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(tr.dark, style: const TextStyle(fontSize: 13)),
+                ),
+              },
+              onValueChanged: (v) {
+                if (v == null) return;
+                setState(() => _themeMode = v);
+                widget.onTheme(v);
+              },
+            ),
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          tr.themeLabel,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<AppThemeMode>(
+          segments: [
+            ButtonSegment(
+              value: AppThemeMode.system,
+              label: Text(tr.sys, style: const TextStyle(fontSize: 13)),
+              icon: const Icon(Icons.brightness_auto_rounded),
+            ),
+            ButtonSegment(
+              value: AppThemeMode.light,
+              label: Text(tr.light, style: const TextStyle(fontSize: 13)),
+              icon: const Icon(Icons.light_mode_rounded),
+            ),
+            ButtonSegment(
+              value: AppThemeMode.dark,
+              label: Text(tr.dark, style: const TextStyle(fontSize: 13)),
+              icon: const Icon(Icons.dark_mode_rounded),
+            ),
+          ],
+          selected: {_themeMode},
+          onSelectionChanged: (v) {
+            setState(() => _themeMode = v.first);
+            widget.onTheme(v.first);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLangControl(S tr, ThemeData theme) {
+    if (_isApple) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tr.langLabel,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: CupertinoSlidingSegmentedControl<AppLanguage>(
+              groupValue: _language,
+              children: const {
+                AppLanguage.ru: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 6),
+                  child: Text('Русский', style: TextStyle(fontSize: 13)),
+                ),
+                AppLanguage.en: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 6),
+                  child: Text('English', style: TextStyle(fontSize: 13)),
+                ),
+              },
+              onValueChanged: (v) {
+                if (v == null) return;
+                setState(() => _language = v);
+                widget.onLang(v);
+              },
+            ),
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          tr.langLabel,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<AppLanguage>(
+          segments: const [
+            ButtonSegment(
+              value: AppLanguage.ru,
+              label: Text('Русский', style: TextStyle(fontSize: 13)),
+            ),
+            ButtonSegment(
+              value: AppLanguage.en,
+              label: Text('English', style: TextStyle(fontSize: 13)),
+            ),
+          ],
+          selected: {_language},
+          onSelectionChanged: (v) {
+            setState(() => _language = v.first);
+            widget.onLang(v.first);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAuthButton(S tr, ThemeData theme) {
+    if (widget.onAuthAction == null) return const SizedBox.shrink();
+
+    void handleAuth() async {
+      setState(() => _authBusy = true);
+      Navigator.of(context).pop();
+      try {
+        await widget.onAuthAction!.call();
+      } finally {
+        if (mounted) setState(() => _authBusy = false);
+      }
+    }
+
+    if (_isApple) {
+      return SizedBox(
+        width: double.infinity,
+        child: CupertinoButton.filled(
+          onPressed: _authBusy ? null : handleAuth,
+          borderRadius: BorderRadius.circular(12),
+          child: _authBusy
+              ? const CupertinoActivityIndicator(color: CupertinoColors.white)
+              : Text(widget.isAuthenticated ? tr.signOut : tr.signIn),
+        ),
+      );
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: _authBusy ? null : handleAuth,
+        icon: Icon(
+          widget.isAuthenticated ? Icons.logout_rounded : Icons.login_rounded,
+        ),
+        label: Text(widget.isAuthenticated ? tr.signOut : tr.signIn),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isApple) return _buildApple(context);
+    return _buildMaterial(context);
+  }
+
+  Widget _buildApple(BuildContext context) {
+    final tr = widget.tr;
+    final mq = MediaQuery.of(context);
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: mq.size.height * 0.85),
+      decoration: BoxDecoration(
+        color: _iosBackground(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 4),
+            width: 36,
+            height: 5,
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemGrey3.resolveFrom(context),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    tr.settings,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    tr.done,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(top: 8, bottom: 24),
+              child: Column(
+                children: [
+                  _AppleSection(
+                    header: tr.appearance,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                tr.themeLabel,
+                                style: const TextStyle(fontSize: 17),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: CupertinoSlidingSegmentedControl<AppThemeMode>(
+                            groupValue: _themeMode,
+                            children: {
+                              AppThemeMode.system: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                child: Text(
+                                  tr.sys,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              AppThemeMode.light: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                child: Text(
+                                  tr.light,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              AppThemeMode.dark: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                child: Text(
+                                  tr.dark,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            },
+                            onValueChanged: (v) {
+                              if (v == null) return;
+                              setState(() => _themeMode = v);
+                              widget.onTheme(v);
+                            },
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                tr.langLabel,
+                                style: const TextStyle(fontSize: 17),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: CupertinoSlidingSegmentedControl<AppLanguage>(
+                            groupValue: _language,
+                            children: const {
+                              AppLanguage.ru: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 6),
+                                child: Text(
+                                  'Русский',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              AppLanguage.en: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 6),
+                                child: Text(
+                                  'English',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            },
+                            onValueChanged: (v) {
+                              if (v == null) return;
+                              setState(() => _language = v);
+                              widget.onLang(v);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (widget.onAuthAction != null) ...[
+                    const SizedBox(height: 18),
+                    _AppleSection(
+                      header: tr.accountSection,
+                      children: [
+                        _AppleListRow(
+                          icon: widget.isAuthenticated
+                              ? CupertinoIcons.square_arrow_right
+                              : CupertinoIcons.person_crop_circle_badge_plus,
+                          iconBackground: widget.isAuthenticated
+                              ? CupertinoColors.destructiveRed
+                                    .resolveFrom(context)
+                                    .withOpacity(0.18)
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.primary.withOpacity(0.18),
+                          iconColor: widget.isAuthenticated
+                              ? CupertinoColors.destructiveRed.resolveFrom(
+                                  context,
+                                )
+                              : Theme.of(context).colorScheme.primary,
+                          title: widget.isAuthenticated
+                              ? tr.signOut
+                              : tr.signIn,
+                          destructive: widget.isAuthenticated,
+                          onTap: _authBusy
+                              ? null
+                              : () async {
+                                  setState(() => _authBusy = true);
+                                  Navigator.of(context).pop();
+                                  try {
+                                    await widget.onAuthAction!.call();
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _authBusy = false);
+                                    }
+                                  }
+                                },
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaterial(BuildContext context) {
     final tr = widget.tr;
     final theme = Theme.of(context);
     final mq = MediaQuery.of(context);
@@ -1663,77 +5297,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            tr.themeLabel,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SegmentedButton<AppThemeMode>(
-                            segments: [
-                              ButtonSegment(
-                                value: AppThemeMode.system,
-                                label: Text(
-                                  tr.sys,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                icon: const Icon(Icons.brightness_auto_rounded),
-                              ),
-                              ButtonSegment(
-                                value: AppThemeMode.light,
-                                label: Text(
-                                  tr.light,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                icon: const Icon(Icons.light_mode_rounded),
-                              ),
-                              ButtonSegment(
-                                value: AppThemeMode.dark,
-                                label: Text(
-                                  tr.dark,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                icon: const Icon(Icons.dark_mode_rounded),
-                              ),
-                            ],
-                            selected: {_themeMode},
-                            onSelectionChanged: (v) {
-                              setState(() => _themeMode = v.first);
-                              widget.onTheme(v.first);
-                            },
-                          ),
+                          _buildThemeControl(tr, theme),
                           const SizedBox(height: 24),
-                          Text(
-                            tr.langLabel,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SegmentedButton<AppLanguage>(
-                            segments: const [
-                              ButtonSegment(
-                                value: AppLanguage.ru,
-                                label: Text(
-                                  'Русский',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                              ButtonSegment(
-                                value: AppLanguage.en,
-                                label: Text(
-                                  'English',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ],
-                            selected: {_language},
-                            onSelectionChanged: (v) {
-                              setState(() => _language = v.first);
-                              widget.onLang(v.first);
-                            },
-                          ),
+                          _buildLangControl(tr, theme),
                           const SizedBox(height: 24),
                           Text(
                             tr.account,
@@ -1742,38 +5308,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: widget.onAuthAction == null
-                                ? const SizedBox.shrink()
-                                : FilledButton.icon(
-                                    onPressed: _authBusy
-                                        ? null
-                                        : () async {
-                                            setState(() => _authBusy = true);
-                                            Navigator.of(context).pop();
-                                            try {
-                                              await widget.onAuthAction!.call();
-                                            } finally {
-                                              if (mounted) {
-                                                setState(
-                                                  () => _authBusy = false,
-                                                );
-                                              }
-                                            }
-                                          },
-                                    icon: Icon(
-                                      widget.isAuthenticated
-                                          ? Icons.logout_rounded
-                                          : Icons.login_rounded,
-                                    ),
-                                    label: Text(
-                                      widget.isAuthenticated
-                                          ? tr.signOut
-                                          : tr.signIn,
-                                    ),
-                                  ),
-                          ),
+                          _buildAuthButton(tr, theme),
                         ],
                       ),
                     ),
@@ -1788,31 +5323,530 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 }
 
+class _ProfileOutreachEntryCard extends StatelessWidget {
+  final OutreachStatEntry entry;
+  final S tr;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _ProfileOutreachEntryCard({
+    required this.entry,
+    required this.tr,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final secondary = _iosSecondaryLabel(context);
+    final dateStr = DateFormat('dd.MM.yyyy').format(entry.outreachDate);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: _iosCardBackground(context),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.calendar,
+                    size: 15,
+                    color: secondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    dateStr,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: secondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    onPressed: onEdit,
+                    child: Icon(
+                      CupertinoIcons.pencil,
+                      size: 18,
+                      color: CupertinoColors.activeBlue.resolveFrom(context),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    onPressed: onDelete,
+                    child: Icon(
+                      CupertinoIcons.trash,
+                      size: 18,
+                      color: CupertinoColors.destructiveRed.resolveFrom(context),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MiniStatItem(
+                          icon: CupertinoIcons.bubble_left_fill,
+                          color: const Color(0xFF34C759),
+                          value: '${entry.gospelsTold}',
+                          label: tr.gospelsTold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _MiniStatItem(
+                          icon: CupertinoIcons.heart_fill,
+                          color: const Color(0xFFFF3B30),
+                          value: '${entry.salvationPrayedUnreachable}',
+                          label: tr.salvationPrayedUnreachable,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MiniStatItem(
+                          icon: CupertinoIcons.book_fill,
+                          color: const Color(0xFFFF9500),
+                          value: '${entry.scripturesDistributed}',
+                          label: tr.scripturesDistributed,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _MiniStatItem(
+                          icon: CupertinoIcons.waveform_path_ecg,
+                          color: const Color(0xFF5856D6),
+                          value: '${entry.healingsDeliverances}',
+                          label: tr.healingsDeliverances,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ProfilePage extends StatelessWidget {
   final S tr;
   final BackendUser? backendUser;
   final String? backendAvatarUrl;
+  final String? cachedAvatarPath;
   final bool isAuthenticated;
   final List<NewBeliever> believers;
   final VoidCallback onOpenAuth;
   final Future<void> Function() onEditAccount;
   final Future<void> Function() onLogout;
   final VoidCallback onSettings;
+  final List<OutreachStatEntry> myOutreachStats;
+  final Future<void> Function({
+    int? statisticsId,
+    required String outreachDate,
+    required int gospelsTold,
+    required int salvationPrayedUnreachable,
+    required int scripturesDistributed,
+    required int healingsDeliverances,
+  })
+  onSaveOutreachStats;
+  final Future<void> Function(int statisticsId) onDeleteOutreachStats;
+
   const ProfilePage({
     super.key,
     required this.tr,
     required this.backendUser,
     required this.backendAvatarUrl,
+    required this.cachedAvatarPath,
     required this.isAuthenticated,
     required this.believers,
     required this.onOpenAuth,
     required this.onEditAccount,
     required this.onLogout,
     required this.onSettings,
+    required this.myOutreachStats,
+    required this.onSaveOutreachStats,
+    required this.onDeleteOutreachStats,
   });
+
+  Future<void> _confirmLogout(BuildContext context) async {
+    bool? shouldLogout;
+    if (_isApple) {
+      shouldLogout = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: Text(tr.signOutConfirmTitle),
+          content: Text(tr.signOutConfirmBody),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(tr.cancel),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(tr.signOut),
+            ),
+          ],
+        ),
+      );
+    } else {
+      shouldLogout = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(tr.signOutConfirmTitle),
+          content: Text(tr.signOutConfirmBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(tr.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(tr.signOut),
+            ),
+          ],
+        ),
+      );
+    }
+    if (shouldLogout == true) await onLogout();
+  }
+
+  void _openOutreachStatsSheet(
+    BuildContext context, {
+    OutreachStatEntry? existing,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _OutreachStatsSheet(
+        tr: tr,
+        existing: existing,
+        onSave: ({
+          required String outreachDate,
+          required int gospelsTold,
+          required int salvationPrayedUnreachable,
+          required int scripturesDistributed,
+          required int healingsDeliverances,
+        }) => onSaveOutreachStats(
+          statisticsId: existing?.id,
+          outreachDate: outreachDate,
+          gospelsTold: gospelsTold,
+          salvationPrayedUnreachable: salvationPrayedUnreachable,
+          scripturesDistributed: scripturesDistributed,
+          healingsDeliverances: healingsDeliverances,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteEntry(
+    BuildContext context,
+    OutreachStatEntry entry,
+  ) async {
+    bool? confirmed;
+    if (_isApple) {
+      confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title: Text(tr.deleteEntryTitle),
+          content: Text(tr.deleteEntryBody),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(tr.cancel),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(tr.deleteEntry),
+            ),
+          ],
+        ),
+      );
+    } else {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(tr.deleteEntryTitle),
+          content: Text(tr.deleteEntryBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(tr.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(tr.deleteEntry),
+            ),
+          ],
+        ),
+      );
+    }
+    if (confirmed == true) await onDeleteOutreachStats(entry.id);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isApple) return _buildApple(context);
+    return _buildMaterial(context);
+  }
+
+  Widget _buildApple(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+
+    final children = <Widget>[
+      _AppleLargeTitle(title: tr.profile, onSettings: onSettings),
+    ];
+
+    if (!isAuthenticated) {
+      children.add(
+        _AppleProfileEmpty(
+          icon: CupertinoIcons.person_crop_circle_badge_plus,
+          iconColor: primary,
+          title: tr.profileNeedAuth,
+          subtitle: tr.profileNeedAuthSub,
+          actionLabel: tr.signIn,
+          onAction: onOpenAuth,
+        ),
+      );
+    } else if (backendUser == null) {
+      children.add(
+        _AppleProfileEmpty(
+          icon: CupertinoIcons.cloud_download,
+          iconColor: CupertinoColors.destructiveRed.resolveFrom(context),
+          title: tr.serverAccountUnavailable,
+          subtitle: null,
+          actionLabel: tr.signOut,
+          destructive: true,
+          onAction: () => _confirmLogout(context),
+        ),
+      );
+    } else {
+      final total = believers.length;
+      final savedCount = believers
+          .where((b) => b.stage != BelieverStage.interested)
+          .length;
+
+      // Hero contact card with gradient bg + floating avatar
+      children.add(
+        _AppleProfileHero(
+          user: backendUser!,
+          avatarUrl: backendAvatarUrl,
+          avatarLocalPath: cachedAvatarPath,
+          tint: primary,
+          onEdit: () async {
+            await onEditAccount();
+          },
+          editLabel: tr.editProfile,
+        ),
+      );
+      children.add(const SizedBox(height: 18));
+
+      // Stat cards row (Apple Health style)
+      children.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: _AppleStatCard(
+                  icon: CupertinoIcons.person_3_fill,
+                  tint: const Color(0xFF007AFF),
+                  value: '$total',
+                  label: tr.total,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _AppleStatCard(
+                  icon: CupertinoIcons.sparkles,
+                  tint: const Color(0xFFFF9500),
+                  value: '$savedCount',
+                  label: tr.savedPeople,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (backendUser!.about.isNotEmpty) {
+        children.add(const SizedBox(height: 22));
+        children.add(
+          _AppleSection(
+            header: tr.about,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Text(
+                  backendUser!.about,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.42,
+                    color: CupertinoColors.label.resolveFrom(context),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // ── Outreach statistics section ──────────────────────────────────────
+      children.add(const SizedBox(height: 22));
+      children.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  tr.outreachStatsHeader.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _iosSecondaryLabel(context),
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                onPressed: () => _openOutreachStatsSheet(context),
+                child: Text(
+                  tr.addNewEntry,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: primary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (myOutreachStats.isEmpty) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: GestureDetector(
+              onTap: () => _openOutreachStatsSheet(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 20,
+                ),
+                decoration: BoxDecoration(
+                  color: _iosCardBackground(context),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.chart_bar_alt_fill,
+                      size: 20,
+                      color: _iosSecondaryLabel(context),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      tr.noStatsYet,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: _iosSecondaryLabel(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final entry in myOutreachStats) {
+          children.add(
+            _ProfileOutreachEntryCard(
+              entry: entry,
+              tr: tr,
+              onEdit: () => _openOutreachStatsSheet(context, existing: entry),
+              onDelete: () => _confirmDeleteEntry(context, entry),
+            ),
+          );
+          children.add(const SizedBox(height: 10));
+        }
+      }
+
+      children.add(const SizedBox(height: 22));
+      children.add(
+        _AppleSection(
+          header: tr.accountSection,
+          children: [
+            _AppleListRow(
+              icon: CupertinoIcons.pencil,
+              iconBackground: const Color(0xFFAF52DE),
+              iconColor: CupertinoColors.white,
+              title: tr.editAccountProfile,
+              onTap: () async {
+                await onEditAccount();
+              },
+            ),
+            _AppleListRow(
+              icon: CupertinoIcons.square_arrow_right,
+              iconBackground: CupertinoColors.destructiveRed.resolveFrom(
+                context,
+              ),
+              iconColor: CupertinoColors.white,
+              title: tr.signOut,
+              destructive: true,
+              onTap: () => _confirmLogout(context),
+            ),
+          ],
+        ),
+      );
+    }
+
+    children.add(const SizedBox(height: 40));
+
+    return ListView(
+      padding: const EdgeInsets.only(top: 8, bottom: 110),
+      children: children,
+    );
+  }
+
+  Widget _buildMaterial(BuildContext context) {
     final theme = Theme.of(context);
     final total = believers.length;
     final savedCount = believers
@@ -1858,29 +5892,6 @@ class ProfilePage extends StatelessWidget {
       );
     }
 
-    Future<void> confirmLogout() async {
-      final shouldLogout = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(tr.signOutConfirmTitle),
-          content: Text(tr.signOutConfirmBody),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(tr.cancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(tr.signOut),
-            ),
-          ],
-        ),
-      );
-      if (shouldLogout == true) {
-        await onLogout();
-      }
-    }
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
@@ -1918,7 +5929,7 @@ class ProfilePage extends StatelessWidget {
                       Text(
                         tr.profileNeedAuthSub,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                          color: Colors.white,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -1953,7 +5964,7 @@ class ProfilePage extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
                       OutlinedButton.icon(
-                        onPressed: confirmLogout,
+                        onPressed: () => _confirmLogout(context),
                         icon: const Icon(Icons.logout_rounded, size: 18),
                         label: Text(tr.signOut),
                       ),
@@ -1979,7 +5990,7 @@ class ProfilePage extends StatelessWidget {
                           ),
                           IconButton(
                             tooltip: tr.signOut,
-                            onPressed: confirmLogout,
+                            onPressed: () => _confirmLogout(context),
                             icon: const Icon(Icons.logout_rounded),
                           ),
                         ],
@@ -1990,10 +6001,16 @@ class ProfilePage extends StatelessWidget {
                         backgroundColor: theme.colorScheme.primary.withOpacity(
                           0.12,
                         ),
-                        foregroundImage: (backendAvatarUrl != null)
-                            ? NetworkImage(backendAvatarUrl!)
-                            : null,
-                        child: backendAvatarUrl == null
+                        foregroundImage: _profileAvatarImage(
+                          cachedAvatarPath,
+                          backendAvatarUrl,
+                        ),
+                        child:
+                            _profileAvatarImage(
+                                  cachedAvatarPath,
+                                  backendAvatarUrl,
+                                ) ==
+                                null
                             ? Text(
                                 backendUser!.initials,
                                 style: theme.textTheme.titleLarge?.copyWith(
@@ -2056,8 +6073,172 @@ class ProfilePage extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Text(
+                tr.outreachStatsHeader,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _openOutreachStatsSheet(context),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: Text(tr.addNewEntry),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (myOutreachStats.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                  0.35,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                tr.noStatsYet,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            )
+          else
+            ...myOutreachStats.map((entry) {
+              final dateStr = DateFormat('dd.MM.yyyy').format(entry.outreachDate);
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 14,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            dateStr,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            tooltip: tr.editOutreachStats,
+                            icon: const Icon(Icons.edit_rounded, size: 18),
+                            onPressed: () =>
+                                _openOutreachStatsSheet(context, existing: entry),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                          ),
+                          IconButton(
+                            tooltip: tr.deleteEntry,
+                            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                            onPressed: () => _confirmDeleteEntry(context, entry),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          _matStatChip(
+                            context,
+                            Icons.campaign_rounded,
+                            '${entry.gospelsTold}',
+                            tr.gospelsTold,
+                          ),
+                          const SizedBox(width: 8),
+                          _matStatChip(
+                            context,
+                            Icons.favorite_rounded,
+                            '${entry.salvationPrayedUnreachable}',
+                            tr.salvationPrayedUnreachable,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _matStatChip(
+                            context,
+                            Icons.menu_book_rounded,
+                            '${entry.scripturesDistributed}',
+                            tr.scripturesDistributed,
+                          ),
+                          const SizedBox(width: 8),
+                          _matStatChip(
+                            context,
+                            Icons.health_and_safety_rounded,
+                            '${entry.healingsDeliverances}',
+                            tr.healingsDeliverances,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
         ],
       ],
+    );
+  }
+
+  Widget _matStatChip(
+    BuildContext context,
+    IconData icon,
+    String value,
+    String label,
+  ) {
+    final theme = Theme.of(context);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: theme.colorScheme.primary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    label,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2125,28 +6306,122 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
     }
   }
 
+  void _doSave() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.of(context).pop(
+      AccountEditResult(
+        name: _name.text.trim(),
+        about: _about.text.trim(),
+        avatarPath: _avatarFile?.path,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tr = S(widget.language);
     final theme = Theme.of(context);
     final mq = MediaQuery.of(context);
+
+    Widget avatarPickerButton() {
+      if (_isApple) {
+        return CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: _pickingAvatar ? null : _pickAvatar,
+          child: _pickingAvatar
+              ? const CupertinoActivityIndicator()
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(CupertinoIcons.photo, size: 18),
+                    const SizedBox(width: 6),
+                    Text(tr.changeAvatar),
+                  ],
+                ),
+        );
+      }
+      return OutlinedButton.icon(
+        onPressed: _pickingAvatar ? null : _pickAvatar,
+        icon: _pickingAvatar
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.photo_library_outlined),
+        label: Text(tr.changeAvatar),
+      );
+    }
+
     return Container(
       height: mq.size.height * 0.9,
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        color: _isApple ? _iosBackground(context) : theme.colorScheme.surface,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(_isApple ? 14 : 28),
+        ),
       ),
       child: Column(
         children: [
           Container(
-            margin: const EdgeInsets.only(top: 12, bottom: 6),
-            width: 44,
-            height: 4,
+            margin: const EdgeInsets.only(top: 8, bottom: 4),
+            width: _isApple ? 36 : 44,
+            height: _isApple ? 5 : 4,
             decoration: BoxDecoration(
-              color: theme.dividerColor,
+              color: _isApple
+                  ? CupertinoColors.systemGrey3.resolveFrom(context)
+                  : theme.dividerColor,
               borderRadius: BorderRadius.circular(99),
             ),
           ),
+          if (_isApple)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+              child: Row(
+                children: [
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      tr.cancel,
+                      style: TextStyle(
+                        fontSize: 17,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      tr.editAccountProfile,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    onPressed: _doSave,
+                    child: Text(
+                      tr.save,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
@@ -2160,13 +6435,15 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      tr.editAccountProfile,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
+                    if (!_isApple) ...[
+                      Text(
+                        tr.editAccountProfile,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+                    ],
                     Row(
                       children: [
                         CircleAvatar(
@@ -2179,65 +6456,99 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
                               : null,
                         ),
                         const SizedBox(width: 12),
-                        OutlinedButton.icon(
-                          onPressed: _pickingAvatar ? null : _pickAvatar,
-                          icon: _pickingAvatar
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.photo_library_outlined),
-                          label: Text(tr.changeAvatar),
-                        ),
+                        avatarPickerButton(),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _name,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: InputDecoration(
-                        labelText: tr.yourName,
-                        prefixIcon: const Icon(Icons.person_outline_rounded),
-                      ),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? tr.nameReq : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _about,
-                      minLines: 3,
-                      maxLines: 5,
-                      decoration: InputDecoration(
-                        labelText: tr.about,
-                        hintText: tr.bioHint,
-                        alignLabelWithHint: true,
-                        prefixIcon: const Padding(
-                          padding: EdgeInsets.only(bottom: 44),
-                          child: Icon(Icons.auto_awesome_outlined),
+                    if (_isApple) ...[
+                      CupertinoTextField(
+                        controller: _name,
+                        textCapitalization: TextCapitalization.words,
+                        placeholder: tr.yourName,
+                        prefix: const Padding(
+                          padding: EdgeInsets.only(left: 10),
+                          child: Icon(
+                            CupertinoIcons.person,
+                            size: 20,
+                            color: CupertinoColors.systemGrey,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: CupertinoColors.systemBackground.resolveFrom(
+                            context,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: CupertinoColors.separator.resolveFrom(
+                              context,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          if (!_formKey.currentState!.validate()) return;
-                          Navigator.of(context).pop(
-                            AccountEditResult(
-                              name: _name.text.trim(),
-                              about: _about.text.trim(),
-                              avatarPath: _avatarFile?.path,
+                      const SizedBox(height: 12),
+                      CupertinoTextField(
+                        controller: _about,
+                        minLines: 3,
+                        maxLines: 5,
+                        placeholder: tr.bioHint,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: CupertinoColors.systemBackground.resolveFrom(
+                            context,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: CupertinoColors.separator.resolveFrom(
+                              context,
                             ),
-                          );
-                        },
-                        icon: const Icon(Icons.save_rounded),
-                        label: Text(tr.save),
+                          ),
+                        ),
                       ),
-                    ),
+                    ] else ...[
+                      TextFormField(
+                        controller: _name,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: InputDecoration(
+                          labelText: tr.yourName,
+                          prefixIcon: const Icon(Icons.person_outline_rounded),
+                        ),
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? tr.nameReq : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _about,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: InputDecoration(
+                          labelText: tr.about,
+                          hintText: tr.bioHint,
+                          alignLabelWithHint: true,
+                          prefixIcon: const Padding(
+                            padding: EdgeInsets.only(bottom: 44),
+                            child: Icon(Icons.auto_awesome_outlined),
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (!_isApple) ...[
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _doSave,
+                          icon: const Icon(Icons.save_rounded),
+                          label: Text(tr.save),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2508,6 +6819,49 @@ class _AddSheetState extends State<AddSheet> {
   }
 
   Future<void> _pickDate() async {
+    if (_isApple) {
+      DateTime tempDate = _date;
+      await showCupertinoModalPopup<void>(
+        context: context,
+        builder: (_) => Container(
+          height: 280,
+          color: CupertinoColors.systemBackground.resolveFrom(context),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 44,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    CupertinoButton(
+                      child: Text(S(widget.language).cancel),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    CupertinoButton(
+                      child: Text(S(widget.language).done),
+                      onPressed: () {
+                        setState(() => _date = tempDate);
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.date,
+                  initialDateTime: _date,
+                  minimumDate: DateTime(2020),
+                  maximumDate: DateTime(2040),
+                  onDateTimeChanged: (d) => tempDate = d,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
     final d = await showDatePicker(
       context: context,
       initialDate: _date,
@@ -2543,8 +6897,348 @@ class _AddSheetState extends State<AddSheet> {
     });
   }
 
+  void _submitForm(BuildContext context) {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.of(context).pop(
+      NewBeliever(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        name: _name.text.trim(),
+        telegram: _normalizeTelegramForStorage(_telegram.text),
+        phone: _normalizePhoneForStorage(_phone.text),
+        testimony: _testimony.text.trim(),
+        note: _note.text.trim(),
+        evangelismMethod: _method,
+        customEvangelismMethod: _customMethod.text.trim(),
+        createdAt: _date,
+        stage: _stage,
+        latitude: _location?.latitude,
+        longitude: _location?.longitude,
+        place: _placeName,
+      ),
+    );
+  }
+
+  Future<void> _pickStage() async {
+    final tr = S(widget.language);
+    final selected = await showCupertinoModalPopup<BelieverStage>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(tr.stage),
+        actions: BelieverStage.values
+            .map(
+              (s) => CupertinoActionSheetAction(
+                onPressed: () => Navigator.of(ctx).pop(s),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _Dot(stage: s, size: 10),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        stageFull(s, widget.language),
+                        style: TextStyle(
+                          fontWeight: s == _stage
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(tr.cancel),
+        ),
+      ),
+    );
+    if (selected != null) setState(() => _stage = selected);
+  }
+
+  Future<void> _pickMethod() async {
+    final tr = S(widget.language);
+    final selected = await showCupertinoModalPopup<EvangelismMethod>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(tr.evangelismMethod),
+        actions: EvangelismMethod.values
+            .map(
+              (m) => CupertinoActionSheetAction(
+                onPressed: () => Navigator.of(ctx).pop(m),
+                child: Text(
+                  evangelismMethodLabel(m, tr),
+                  style: TextStyle(
+                    fontWeight: m == _method
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(tr.cancel),
+        ),
+      ),
+    );
+    if (selected != null) setState(() => _method = selected);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isApple) return _buildApple(context);
+    return _buildMaterial(context);
+  }
+
+  Widget _buildApple(BuildContext context) {
+    final tr = S(widget.language);
+    final theme = Theme.of(context);
+    final mq = MediaQuery.of(context);
+    final hasLocation = _location != null;
+    final locationValue = hasLocation
+        ? (_placeName?.trim().isNotEmpty == true
+              ? _placeName!.trim()
+              : '${_location!.latitude.toStringAsFixed(4)}, '
+                    '${_location!.longitude.toStringAsFixed(4)}')
+        : null;
+
+    return Container(
+      height: mq.size.height * 0.94,
+      decoration: BoxDecoration(
+        color: _iosBackground(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 4),
+            width: 36,
+            height: 5,
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemGrey3.resolveFrom(context),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            child: Row(
+              children: [
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    tr.cancel,
+                    style: TextStyle(
+                      fontSize: 17,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    tr.add,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  onPressed: () => _submitForm(context),
+                  child: Text(
+                    tr.save,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Form(
+              key: _formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  0,
+                  4,
+                  0,
+                  mq.viewInsets.bottom + 32,
+                ),
+                children: [
+                  _AppleSection(
+                    header: tr.name,
+                    dividerIndent: 58,
+                    children: [
+                      _AppleInputRow(
+                        icon: CupertinoIcons.person_alt,
+                        iconBackground: const Color(0xFF34C759),
+                        placeholder: tr.name,
+                        controller: _name,
+                        textCapitalization: TextCapitalization.words,
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? tr.nameReq : null,
+                      ),
+                      _AppleInputRow(
+                        icon: CupertinoIcons.at,
+                        iconBackground: const Color(0xFF0A84FF),
+                        placeholder: tr.telegramHint,
+                        controller: _telegram,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[a-zA-Z0-9_@./:?=&-]'),
+                          ),
+                        ],
+                        validator: (_) => _validateTelegram(tr),
+                      ),
+                      _AppleInputRow(
+                        icon: CupertinoIcons.phone_fill,
+                        iconBackground: const Color(0xFFFF9F0A),
+                        placeholder: tr.phoneHint,
+                        controller: _phone,
+                        keyboardType: TextInputType.phone,
+                        autocorrect: false,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[0-9+()\-\s]'),
+                          ),
+                          _PhoneInputFormatter(),
+                        ],
+                        validator: (_) => _validatePhone(tr),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _AppleSection(
+                    header: tr.stage,
+                    children: [
+                      _AppleTapRow(
+                        icon: CupertinoIcons.calendar,
+                        iconBackground: const Color(0xFFFF3B30),
+                        title: tr.date,
+                        value: fmtDate(_date, widget.language),
+                        onTap: _pickDate,
+                      ),
+                      _AppleTapRow(
+                        icon: CupertinoIcons.flag_fill,
+                        iconBackground: stageColor(_stage),
+                        title: tr.stage,
+                        value: stageFull(_stage, widget.language),
+                        onTap: _pickStage,
+                      ),
+                      _AppleTapRow(
+                        icon: CupertinoIcons.book_fill,
+                        iconBackground: const Color(0xFFAF52DE),
+                        title: tr.evangelismMethod,
+                        value: evangelismMethodLabel(_method, tr),
+                        onTap: _pickMethod,
+                      ),
+                      if (_method == EvangelismMethod.custom)
+                        _AppleInputRow(
+                          icon: CupertinoIcons.pencil,
+                          iconBackground: const Color(0xFF8E8E93),
+                          placeholder: tr.customMethodHint,
+                          controller: _customMethod,
+                          minLines: 2,
+                          maxLines: 4,
+                          textCapitalization: TextCapitalization.sentences,
+                          validator: (value) {
+                            if (_method != EvangelismMethod.custom) return null;
+                            if (value == null || value.trim().isEmpty) {
+                              return tr.customMethodReq;
+                            }
+                            return null;
+                          },
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _AppleSection(
+                    header: tr.testimony,
+                    footer: tr.testimonyHint,
+                    children: [
+                      _AppleInputRow(
+                        placeholder: tr.testimony,
+                        controller: _testimony,
+                        minLines: 3,
+                        maxLines: 6,
+                        textCapitalization: TextCapitalization.sentences,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _AppleSection(
+                    header: tr.note,
+                    children: [
+                      _AppleInputRow(
+                        placeholder: tr.noteHint,
+                        controller: _note,
+                        minLines: 3,
+                        maxLines: 6,
+                        textCapitalization: TextCapitalization.sentences,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _AppleSection(
+                    header: tr.location,
+                    children: [
+                      _AppleTapRow(
+                        icon: CupertinoIcons.location_fill,
+                        iconBackground: const Color(0xFFFF3B30),
+                        title: tr.location,
+                        value: locationValue,
+                        placeholder: tr.tapToPlace,
+                        onTap: _pickLocation,
+                        trailingExtra: hasLocation
+                            ? GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: _clearLocation,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 2,
+                                    vertical: 4,
+                                  ),
+                                  child: Icon(
+                                    CupertinoIcons.clear_circled_solid,
+                                    size: 18,
+                                    color: CupertinoColors.systemGrey3
+                                        .resolveFrom(context),
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaterial(BuildContext context) {
     final tr = S(widget.language);
     final theme = Theme.of(context);
     final mq = MediaQuery.of(context);
@@ -2559,7 +7253,7 @@ class _AddSheetState extends State<AddSheet> {
         mainAxisSize: MainAxisSize.max,
         children: [
           Container(
-            margin: const EdgeInsets.only(top: 12, bottom: 4),
+            margin: const EdgeInsets.only(top: 8, bottom: 4),
             width: 44,
             height: 4,
             decoration: BoxDecoration(
@@ -2759,29 +7453,7 @@ class _AddSheetState extends State<AddSheet> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: () {
-                          if (!_formKey.currentState!.validate()) return;
-                          Navigator.of(context).pop(
-                            NewBeliever(
-                              id: DateTime.now().microsecondsSinceEpoch
-                                  .toString(),
-                              name: _name.text.trim(),
-                              telegram: _normalizeTelegramForStorage(
-                                _telegram.text,
-                              ),
-                              phone: _normalizePhoneForStorage(_phone.text),
-                              testimony: _testimony.text.trim(),
-                              note: _note.text.trim(),
-                              evangelismMethod: _method,
-                              customEvangelismMethod: _customMethod.text.trim(),
-                              createdAt: _date,
-                              stage: _stage,
-                              latitude: _location?.latitude,
-                              longitude: _location?.longitude,
-                              place: _placeName,
-                            ),
-                          );
-                        },
+                        onPressed: () => _submitForm(context),
                         icon: const Icon(Icons.save_rounded),
                         label: Text(tr.save),
                       ),
@@ -2895,11 +7567,21 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                     ],
                   ),
                 ),
-                IconButton(
-                  tooltip: tr.cancel,
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
-                ),
+                _isApple
+                    ? CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Icon(
+                          CupertinoIcons.xmark_circle_fill,
+                          size: 28,
+                          color: CupertinoColors.systemGrey3,
+                        ),
+                      )
+                    : IconButton(
+                        tooltip: tr.cancel,
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
               ],
             ),
           ),
@@ -2968,41 +7650,93 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
               child: Column(
                 children: [
-                  TextField(
-                    controller: _placeCtrl,
-                    decoration: InputDecoration(
-                      labelText: tr.placeName,
-                      prefixIcon: const Icon(Icons.location_on_outlined),
+                  if (_isApple)
+                    CupertinoTextField(
+                      controller: _placeCtrl,
+                      placeholder: tr.placeName,
+                      prefix: const Padding(
+                        padding: EdgeInsets.only(left: 10),
+                        child: Icon(
+                          CupertinoIcons.location,
+                          size: 20,
+                          color: CupertinoColors.systemGrey,
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.systemBackground.resolveFrom(
+                          context,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: CupertinoColors.separator.resolveFrom(context),
+                        ),
+                      ),
+                    )
+                  else
+                    TextField(
+                      controller: _placeCtrl,
+                      decoration: InputDecoration(
+                        labelText: tr.placeName,
+                        prefixIcon: const Icon(Icons.location_on_outlined),
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(tr.cancel),
-                        ),
+                        child: _isApple
+                            ? CupertinoButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: Text(tr.cancel),
+                              )
+                            : OutlinedButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: Text(tr.cancel),
+                              ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: FilledButton.icon(
-                          onPressed: _selected == null
-                              ? null
-                              : () {
-                                  final placeText = _placeCtrl.text.trim();
-                                  Navigator.of(context).pop(
-                                    PickedLocation(
-                                      latLng: _selected!,
-                                      place: placeText.isEmpty
-                                          ? null
-                                          : placeText,
-                                    ),
-                                  );
-                                },
-                          icon: const Icon(Icons.check_rounded),
-                          label: Text(tr.done),
-                        ),
+                        child: _isApple
+                            ? CupertinoButton.filled(
+                                borderRadius: BorderRadius.circular(12),
+                                onPressed: _selected == null
+                                    ? null
+                                    : () {
+                                        final placeText = _placeCtrl.text
+                                            .trim();
+                                        Navigator.of(context).pop(
+                                          PickedLocation(
+                                            latLng: _selected!,
+                                            place: placeText.isEmpty
+                                                ? null
+                                                : placeText,
+                                          ),
+                                        );
+                                      },
+                                child: Text(tr.done),
+                              )
+                            : FilledButton.icon(
+                                onPressed: _selected == null
+                                    ? null
+                                    : () {
+                                        final placeText = _placeCtrl.text
+                                            .trim();
+                                        Navigator.of(context).pop(
+                                          PickedLocation(
+                                            latLng: _selected!,
+                                            place: placeText.isEmpty
+                                                ? null
+                                                : placeText,
+                                          ),
+                                        );
+                                      },
+                                icon: const Icon(Icons.check_rounded),
+                                label: Text(tr.done),
+                              ),
                       ),
                     ],
                   ),
@@ -3369,9 +8103,342 @@ class _BelieverPreviewSheet extends StatelessWidget {
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text(lang == AppLanguage.ru ? 'Закрыть' : 'Close'),
+                child: _isApple
+                    ? CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(
+                          lang == AppLanguage.ru ? 'Закрыть' : 'Close',
+                        ),
+                      )
+                    : TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(
+                          lang == AppLanguage.ru ? 'Закрыть' : 'Close',
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class LatestTestimoniesSheet extends StatelessWidget {
+  final S tr;
+  final List<LatestTestimony> items;
+  const LatestTestimoniesSheet({
+    super.key,
+    required this.tr,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final secondary = _iosSecondaryLabel(context);
+    final labelColor = CupertinoColors.label.resolveFrom(context);
+    final bg = CupertinoColors.systemGroupedBackground.resolveFrom(context);
+    final mq = MediaQuery.of(context);
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+        child: Container(
+          constraints: BoxConstraints(maxHeight: mq.size.height * 0.82),
+          decoration: BoxDecoration(
+            color: bg.withOpacity(isDark ? 0.88 : 0.95),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(
+              top: BorderSide(
+                color: isDark
+                    ? Colors.white.withOpacity(0.08)
+                    : Colors.black.withOpacity(0.06),
+                width: 0.5,
+              ),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Drag handle ──────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 4),
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: secondary.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // ── Header ───────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 8, 12),
+                child: Row(
+                  children: [
+                    // Squircle icon — mirrors _AppleTestimonyHero
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: primary,
+                        borderRadius: BorderRadius.circular(9),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primary.withOpacity(0.32),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        CupertinoIcons.book_fill,
+                        size: 16,
+                        color: CupertinoColors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        tr.latestTestimoniesTitle,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                          color: labelColor,
+                        ),
+                      ),
+                    ),
+                    // iOS-style close button (circle × )
+                    CupertinoButton(
+                      padding: const EdgeInsets.all(8),
+                      minSize: 36,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: secondary.withOpacity(0.14),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          CupertinoIcons.xmark,
+                          size: 14,
+                          color: secondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Thin separator ────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(height: 0.5, color: _iosSeparator(context)),
+              ),
+
+              // ── Cards list ───────────────────────────────────────────────
+              Flexible(
+                child: ListView.builder(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    16,
+                    16,
+                    mq.viewPadding.bottom + 24,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final number = items.length - index;
+                    return _TestimonyCard(
+                      item: item,
+                      number: number,
+                      tint: primary,
+                      isDark: isDark,
+                      secondary: secondary,
+                      labelColor: labelColor,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TestimonyCard extends StatelessWidget {
+  final LatestTestimony item;
+  final int number;
+  final Color tint;
+  final bool isDark;
+  final Color secondary;
+  final Color labelColor;
+
+  const _TestimonyCard({
+    required this.item,
+    required this.number,
+    required this.tint,
+    required this.isDark,
+    required this.secondary,
+    required this.labelColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cardBg = _iosCardBackground(context);
+    final dateStr = DateFormat('d MMM yyyy').format(item.createdAt);
+    final displayName = item.addedByName?.isNotEmpty == true
+        ? item.addedByName
+        : (item.author?.isNotEmpty == true ? item.author : null);
+    final hasAuthor = displayName != null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.18 : 0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              // ── Decorative giant quote glyph (same trick as _AppleTestimonyHero)
+              Positioned(
+                top: -24,
+                right: -8,
+                child: IgnorePointer(
+                  child: Text(
+                    '\u201C',
+                    style: TextStyle(
+                      fontSize: 140,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      color: tint.withOpacity(isDark ? 0.10 : 0.07),
+                    ),
+                  ),
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Top row: date badge + number ──────────────────────
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tint.withOpacity(isDark ? 0.18 : 0.10),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            dateStr,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: tint,
+                              letterSpacing: -0.1,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '#$number',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: secondary.withOpacity(0.55),
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // ── Quote text ────────────────────────────────────────
+                    Text(
+                      '\u201C${item.text}\u201D',
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.2,
+                        color: labelColor,
+                      ),
+                    ),
+
+                    // ── Author ────────────────────────────────────────────
+                    if (hasAuthor) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircleAvatar(
+                            radius: 12,
+                            backgroundColor: tint.withOpacity(
+                              isDark ? 0.20 : 0.12,
+                            ),
+                            foregroundImage: item.addedByAvatarUrl != null &&
+                                    item.addedByAvatarUrl!.isNotEmpty
+                                ? NetworkImage(item.addedByAvatarUrl!)
+                                : null,
+                            child: (item.addedByAvatarUrl == null ||
+                                    item.addedByAvatarUrl!.isEmpty)
+                                ? Icon(
+                                    CupertinoIcons.person_fill,
+                                    size: 12,
+                                    color: tint,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              displayName!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: tint,
+                                letterSpacing: -0.1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
@@ -3418,22 +8485,33 @@ class _PageHeader extends StatelessWidget {
             ),
             if (onSettings != null) ...[
               const SizedBox(width: 8),
-              Material(
-                color: theme.colorScheme.primary.withOpacity(0.10),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: onSettings,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Icon(
-                      Icons.tune_rounded,
-                      size: 20,
-                      color: theme.colorScheme.primary,
+              if (_isApple)
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: onSettings,
+                  child: Icon(
+                    CupertinoIcons.slider_horizontal_3,
+                    size: 22,
+                    color: theme.colorScheme.primary,
+                  ),
+                )
+              else
+                Material(
+                  color: theme.colorScheme.primary.withOpacity(0.10),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onSettings,
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Icon(
+                        Icons.tune_rounded,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ],
         ),
@@ -3586,11 +8664,22 @@ class _FullCard extends StatelessWidget {
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline_rounded),
-              label: Text(lang == AppLanguage.ru ? 'Удалить' : 'Delete'),
-            ),
+            child: _isApple
+                ? CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: onDelete,
+                    child: Text(
+                      lang == AppLanguage.ru ? 'Удалить' : 'Delete',
+                      style: const TextStyle(
+                        color: CupertinoColors.destructiveRed,
+                      ),
+                    ),
+                  )
+                : TextButton.icon(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: Text(lang == AppLanguage.ru ? 'Удалить' : 'Delete'),
+                  ),
           ),
         ],
       ),
@@ -3924,11 +9013,24 @@ class _Empty extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(tr.add),
-            ),
+            _isApple
+                ? CupertinoButton.filled(
+                    borderRadius: BorderRadius.circular(12),
+                    onPressed: onAdd,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(CupertinoIcons.add, size: 18),
+                        const SizedBox(width: 6),
+                        Text(tr.add),
+                      ],
+                    ),
+                  )
+                : FilledButton.icon(
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(tr.add),
+                  ),
           ],
         ),
       ),
@@ -4049,6 +9151,21 @@ class NewBeliever {
   );
 }
 
+class LatestTestimony {
+  final String text;
+  final String? author;
+  final String? addedByName;
+  final String? addedByAvatarUrl;
+  final DateTime createdAt;
+  const LatestTestimony({
+    required this.text,
+    required this.author,
+    required this.createdAt,
+    this.addedByName,
+    this.addedByAvatarUrl,
+  });
+}
+
 class UserProfile {
   final String name;
   final String contact;
@@ -4133,6 +9250,14 @@ class BackendUser {
     avatarUrl: (map['avatar_url'] as String? ?? '').trim(),
     about: (map['about'] as String? ?? '').trim(),
   );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'email': email,
+    'avatar_url': avatarUrl,
+    'about': about,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4330,16 +9455,24 @@ class S {
   bool get _ru => lang == AppLanguage.ru;
 
   String get appTitle => _ru ? "Время идти" : "Time To Go";
+  String get statisticsHeader => _ru ? 'Статистика' : 'Statistics';
+  String get personalStatsHeader =>
+      _ru ? 'Личная статистика' : 'Personal stats';
+  String get appearance => _ru ? 'Оформление' : 'Appearance';
+  String get accountSection => _ru ? 'Аккаунт' : 'Account';
   String get dashSub => _ru
       ? 'Учёт новых верующих и этапов духовного роста'
       : 'Track new believers and their growth';
   String get homeWitnessSub => _ru
-      ? 'Свидетельство дня и ключевые цифры'
-      : 'Testimony of the day and key numbers';
-  String get testimonyOfDay =>
-      _ru ? 'Свидетельство дня' : 'Testimony of the day';
-  String get noTestimonyToday =>
-      _ru ? 'Пока нет свидетельства дня.' : 'No testimony of the day yet.';
+      ? 'Последнее свидетельство и ключевые цифры'
+      : 'Latest testimony and key numbers';
+  String get latestTestimony =>
+      _ru ? 'Последнее свидетельство' : 'Latest testimony';
+  String get latestTestimoniesTitle =>
+      _ru ? 'Последние свидетельства' : 'Latest testimonies';
+  String get noLatestTestimonies =>
+      _ru ? 'Пока нет свидетельств.' : 'No testimonies yet.';
+  String get back => _ru ? 'Назад' : 'Back';
   String get heardGospelCountLabel => _ru
       ? 'Всего человек услышало Евангелие'
       : 'Total people heard the Gospel';
@@ -4375,7 +9508,13 @@ class S {
       ? 'Войдите, чтобы синхронизировать данные между устройствами.'
       : 'Sign in to sync your data across devices.';
   String get methodFourSignsTab => _ru ? '4 знака' : 'Four signs';
+  String get methodFourSignsDesc => _ru
+      ? '«Четыре символа» — это отличный способ донести Евангелие простым и понятным способом. Вы можете начать разговор, задав человеку вопрос: «Вы когда-нибудь слышали историю о четырёх символах?» Затем вы показываете ему эти четыре символа и объясняете Евангелие, опираясь на них.'
+      : '"The Four" is a great way to share the Gospel in a simple and clear way. You can start a conversation by asking: "Have you ever heard the story of the four symbols?" Then you show them these four symbols and explain the Gospel based on them.';
   String get methodJesusDoorTab => _ru ? 'Иисус у двери' : 'Jesus at the door';
+  String get methodJesusDoorDesc => _ru
+      ? '«Иисус у двери» — это очень креативный метод благовестия, представляющий собой полностью прописанный диалог. Он работает только в том случае, если вы уделите время и усилия, чтобы выучить весь разговор слово в слово. Используйте изображение Иисуса, стучащего в дверь, и пройдите через весь этот диалог.'
+      : '"Jesus at the Door" is a very creative evangelism method that consists of a fully scripted dialogue. It only works if you take the time and effort to learn the entire conversation word for word. Use the image of Jesus knocking at the door and go through this entire dialogue.';
   String get methodCustom => _ru ? 'Свой метод' : 'My method';
   String get imageMissing =>
       _ru ? 'Не удалось загрузить изображение' : 'Could not load image';
@@ -4542,4 +9681,33 @@ class S {
   String get withLocation => _ru ? 'С местом' : 'With location';
   String get viewProfile => _ru ? 'Открыть карточку' : 'Open card';
   String get attribution => '© OpenStreetMap contributors';
+
+  // Outreach statistics
+  String get outreachStatsHeader =>
+      _ru ? 'Статистика аутрича' : 'Outreach stats';
+  String get outreachStatsAll => _ru ? 'Все пользователи' : 'All users';
+  String get gospelsTold => _ru ? 'Поделились Евангелием' : 'Gospels told';
+  String get salvationPrayedUnreachable =>
+      _ru ? 'Помолились, не вышли на связь' : 'Prayed, unreachable';
+  String get scripturesDistributed =>
+      _ru ? 'Роздано Писаний' : 'Scriptures distributed';
+  String get healingsDeliverances =>
+      _ru ? 'Исцелений / освобождений' : 'Healings & deliverances';
+  String get addOutreachStats =>
+      _ru ? 'Добавить статистику' : 'Add outreach stats';
+  String get editOutreachStats => _ru ? 'Редактировать' : 'Edit';
+  String get outreachStatsEmpty =>
+      _ru ? 'Нет статистики аутрича' : 'No outreach stats yet';
+  String get outreachStatsSaved => _ru ? 'Статистика сохранена' : 'Stats saved';
+  String get outreachStatsError =>
+      _ru ? 'Не удалось сохранить' : 'Could not save stats';
+  String get noStatsYet =>
+      _ru ? 'Вы ещё не добавили статистику' : 'You haven\'t added stats yet';
+  String get outreachDate => _ru ? 'Дата аутрича' : 'Outreach date';
+  String get addNewEntry => _ru ? 'Новая запись' : 'New entry';
+  String get deleteEntry => _ru ? 'Удалить' : 'Delete';
+  String get deleteEntryTitle =>
+      _ru ? 'Удалить запись?' : 'Delete entry?';
+  String get deleteEntryBody =>
+      _ru ? 'Это действие нельзя отменить.' : 'This cannot be undone.';
 }

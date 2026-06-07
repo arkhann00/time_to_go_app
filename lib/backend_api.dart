@@ -45,6 +45,24 @@ class BackendApi {
     return _baseUri.resolve(relativeOrAbsolute);
   }
 
+  Future<List<int>> downloadBytes(String relativeOrAbsolute) async {
+    final uri = resolveUrl(relativeOrAbsolute);
+    final headers = <String, String>{};
+    if (hasAuth) {
+      headers['Authorization'] = 'Bearer ${_accessToken!}';
+    }
+
+    final response = await _client.get(uri, headers: headers);
+    if (response.statusCode != 200) {
+      throw BackendApiException(
+        statusCode: response.statusCode,
+        message: 'Failed to download file',
+        body: response.body,
+      );
+    }
+    return response.bodyBytes;
+  }
+
   void dispose() => _client.close();
 
   Future<Map<String, dynamic>> health() async {
@@ -320,6 +338,108 @@ class BackendApi {
       statusCode: 500,
       message: 'Unexpected response format: expected JSON array',
       body: data,
+    );
+  }
+
+  // ── Outreach Statistics ──────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getAllOutreachStatistics({
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final query = <String, String>{};
+    if (dateFrom != null && dateFrom.isNotEmpty) query['date_from'] = dateFrom;
+    if (dateTo != null && dateTo.isNotEmpty) query['date_to'] = dateTo;
+
+    final data = await _request(
+      'GET',
+      '/outreach-statistics/all',
+      query: query,
+    );
+    return _asListOfMap(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getMyOutreachStatistics({
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final query = <String, String>{};
+    if (dateFrom != null && dateFrom.isNotEmpty) query['date_from'] = dateFrom;
+    if (dateTo != null && dateTo.isNotEmpty) query['date_to'] = dateTo;
+
+    final data = await _request(
+      'GET',
+      '/outreach-statistics/me',
+      authRequired: true,
+      query: query,
+    );
+    return _asListOfMap(data);
+  }
+
+  Future<Map<String, dynamic>> createOutreachStatistics({
+    required String outreachDate,
+    int gospelsTold = 0,
+    int salvationPrayedUnreachable = 0,
+    int scripturesDistributed = 0,
+    int healingsDeliverances = 0,
+    String? note,
+  }) async {
+    final data = await _request(
+      'POST',
+      '/outreach-statistics',
+      authRequired: true,
+      body: {
+        'outreach_date': outreachDate,
+        'gospels_told': gospelsTold,
+        'salvation_prayed_unreachable': salvationPrayedUnreachable,
+        'scriptures_distributed': scripturesDistributed,
+        'healings_deliverances': healingsDeliverances,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> patchOutreachStatistics(
+    int statisticsId, {
+    String? outreachDate,
+    int? gospelsTold,
+    int? salvationPrayedUnreachable,
+    int? scripturesDistributed,
+    int? healingsDeliverances,
+    String? note,
+  }) async {
+    final body = <String, dynamic>{};
+    if (outreachDate != null && outreachDate.isNotEmpty) {
+      body['outreach_date'] = outreachDate;
+    }
+    if (gospelsTold != null) body['gospels_told'] = gospelsTold;
+    if (salvationPrayedUnreachable != null) {
+      body['salvation_prayed_unreachable'] = salvationPrayedUnreachable;
+    }
+    if (scripturesDistributed != null) {
+      body['scriptures_distributed'] = scripturesDistributed;
+    }
+    if (healingsDeliverances != null) {
+      body['healings_deliverances'] = healingsDeliverances;
+    }
+    if (note != null) body['note'] = note.trim();
+
+    final data = await _request(
+      'PATCH',
+      '/outreach-statistics/$statisticsId',
+      authRequired: true,
+      body: body,
+    );
+    return _asMap(data);
+  }
+
+  Future<void> deleteOutreachStatistics(int statisticsId) async {
+    await _request(
+      'DELETE',
+      '/outreach-statistics/$statisticsId',
+      authRequired: true,
+      expectedCodes: const {204},
     );
   }
 }

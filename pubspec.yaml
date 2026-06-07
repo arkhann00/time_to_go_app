@@ -39,6 +39,7 @@ dependencies:
   url_launcher: ^6.3.2
   geolocator: ^14.0.2
   image_picker: ^1.2.0
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
@@ -63,7 +64,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/four_signs.jpeg
+    - assets/four_signs_dark.PNG
+    - assets/four_signs_light.PNG
     - assets/jesus_on_the_door_1.PNG
     - assets/jesus_on_the_door_2.PNG
 
@@ -96,4 +98,4 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/time_to_go_icon.png
+  image_path: assets/time_to_go_icon.jpeg

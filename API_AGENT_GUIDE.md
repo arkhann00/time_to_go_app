@@ -1,35 +1,44 @@
 # Backend API Guide for Mobile AI Agent
 
-This file is a practical API contract for integrating the mobile app with the backend.
-Use it as the source of truth for endpoints, auth, request/response shapes, and business rules.
+This file is the authoritative API contract for mobile app integration.
+Use it as the single source of truth for endpoints, auth, request/response shapes, and business rules.
 
 ## Base
 
 - Base URL (local): `http://127.0.0.1:8000`
 - Swagger UI: `http://127.0.0.1:8000/docs`
-- Content-Type: `application/json`
+- Content-Type: `application/json` (except avatar upload which is `multipart/form-data`)
+
+---
 
 ## Authentication
 
 ### Token type
 
-- `access_token` is JWT bearer token.
+- `access_token` is a JWT bearer token.
 - Send in header: `Authorization: Bearer <access_token>`.
-- Access token lifetime: 7 days.
-- If token expired or invalid -> `401`.
+- Access token lifetime: **7 days**.
+- Expired or invalid token → `401`.
 
-### Public endpoints (no bearer token required)
+### Refresh logic
+
+- `POST /auth/refresh` accepts the current **valid** access token and returns a new one.
+- If the token is already expired, `/auth/refresh` will return `401` → user must log in again.
+- There is no separate refresh token entity.
+
+### Public endpoints (no bearer required)
 
 - `GET /`
 - `POST /auth/register`
 - `POST /auth/login`
-- `POST /auth/refresh` (token is passed in request body)
+- `POST /auth/refresh`
 - `GET /believers/all`
 - `GET /believers/testimony-of-day`
 - `GET /believers/stats/accepted-jesus-count`
 - `GET /believers/latest`
+- `GET /outreach-statistics/all`
 
-### Protected endpoints (bearer token required)
+### Protected endpoints (bearer required)
 
 - `GET /auth/me`
 - `PATCH /auth/me`
@@ -42,6 +51,11 @@ Use it as the source of truth for endpoints, auth, request/response shapes, and 
 - `GET /believers/{believer_id}`
 - `PATCH /believers/{believer_id}`
 - `DELETE /believers/{believer_id}`
+- `POST /outreach-statistics`
+- `GET /outreach-statistics/me`
+- `GET /outreach-statistics/{statistics_id}`
+- `PATCH /outreach-statistics/{statistics_id}`
+- `DELETE /outreach-statistics/{statistics_id}`
 
 ---
 
@@ -49,62 +63,98 @@ Use it as the source of truth for endpoints, auth, request/response shapes, and 
 
 ### Stage enum (`Believer.stage`)
 
-Allowed values:
-
-- `interested`
-- `receivedJesus`
-- `joinedCommunity`
-- `baptised`
-- `evangelist`
+| Value             | Meaning            |
+| ----------------- | ------------------ |
+| `interested`      | Проявил интерес    |
+| `receivedJesus`   | Принял Иисуса      |
+| `joinedCommunity` | Влился в общину    |
+| `baptised`        | Крещён             |
+| `evangelist`      | Сам евангелизирует |
 
 ### User
 
-- `id`: integer
-- `name`: string (required)
-- `email`: string (required, unique)
-- `avatar_url`: string | null
-- `about`: string | null
+```json
+{
+  "id": 1,
+  "name": "John",
+  "email": "john@example.com",
+  "avatar_url": "/uploads/avatars/user_1_abc123.jpg",
+  "about": "Serving in campus ministry"
+}
+```
+
+- `avatar_url` — relative path served at `<base_url>/uploads/avatars/<filename>`, or `null`
+- `about` — free-text bio, or `null`
 
 ### Evangelism Method
 
-- `id`: integer
-- `name`: string
-- `is_default`: boolean
+```json
+{ "id": 1, "name": "4 знака", "is_default": true }
+```
 
-Default methods created by backend:
+Default methods seeded in DB:
 
 - `4 знака`
 - `Иисус у двери`
 
-### Believer (create/update fields)
+Custom methods belong to a user (`is_default: false`). Name is unique per user.
 
-- `name`: string (required)
-- `telegram`: string | null (optional)
-- `phone_number`: string | null (optional)
-- `met_at`: date string `YYYY-MM-DD` (required)
-- `stage`: enum value (required)
-- `method_id`: integer (required)
-- `note`: string | null
-- `testimony`: string | null
-- `latitude`: number (required)
-- `longitude`: number (required)
+### Believer
 
-Important:
+Create/update fields:
 
-- `telegram` and `phone_number` can both be empty/null.
-- Only `name` is mandatory among these contact/name fields.
+| Field          | Type           | Required | Notes                             |
+| -------------- | -------------- | -------- | --------------------------------- |
+| `name`         | string         | yes      |                                   |
+| `telegram`     | string \| null | no       |                                   |
+| `phone_number` | string \| null | no       |                                   |
+| `met_at`       | `YYYY-MM-DD`   | yes      | Date the person was met           |
+| `stage`        | enum string    | yes      | See stage enum above              |
+| `method_id`    | integer        | yes      | Must be available to current user |
+| `note`         | string \| null | no       |                                   |
+| `testimony`    | string \| null | no       | Their testimony text              |
+| `latitude`     | number         | yes      |                                   |
+| `longitude`    | number         | yes      |                                   |
 
-### Believer response model
+`BelieverResponse` includes all of the above plus:
 
-- All believer fields above plus:
+- `id`: integer
+- `method`: `{ id, name, is_default }`
+
+Public list endpoints (`GET /believers/all`, `GET /believers/latest`, `GET /believers/testimony-of-day`) return `BelieverWithOwnerResponse` which adds:
+
+- `owner`: `{ id, name, avatar_url }`
+
+### Outreach Statistics
+
+Each user can have **multiple** outreach statistics records, one per outreach event/day.
+The `outreach_date` is set manually by the user and identifies when the outreach took place.
+
+Create/update fields:
+
+| Field                          | Type         | Required on create | Notes                                      |
+| ------------------------------ | ------------ | ------------------ | ------------------------------------------ |
+| `outreach_date`                | `YYYY-MM-DD` | yes                | Date of the outreach event                 |
+| `gospels_told`                 | integer ≥ 0  | no (default `0`)   | Number of gospel presentations             |
+| `salvation_prayed_unreachable` | integer ≥ 0  | no (default `0`)   | Prayed for salvation but later unreachable |
+| `scriptures_distributed`       | integer ≥ 0  | no (default `0`)   | NT / Gospel of John copies given out       |
+| `healings_deliverances`        | integer ≥ 0  | no (default `0`)   | People who received healing or deliverance |
+
+Response fields:
+
+- All fields above plus:
   - `id`: integer
-  - `method`: object `{ id, name, is_default }`
+  - `user_id`: integer
+  - `created_at`: ISO 8601 datetime
+  - `updated_at`: ISO 8601 datetime
+
+List-all response (`/outreach-statistics/all`) additionally includes:
+
+- `user`: full `User` object (`id`, `name`, `email`, `avatar_url`, `about`)
 
 ---
 
 ## Endpoint Contracts
-
-## Health
 
 ### `GET /`
 
@@ -113,6 +163,8 @@ Response `200`:
 ```json
 { "status": "success" }
 ```
+
+---
 
 ## Auth
 
@@ -128,17 +180,13 @@ Request:
 }
 ```
 
-Response `200`:
+- Password max size: **72 bytes** (UTF-8 encoded). Longer passwords → `422`.
 
-```json
-{
-  "id": 1,
-  "name": "John",
-  "email": "john@example.com",
-  "avatar_url": null,
-  "about": null
-}
-```
+Response `200`: User object.
+
+Errors:
+
+- `409` — email already registered
 
 ### `POST /auth/login`
 
@@ -160,14 +208,16 @@ Response `200`:
 }
 ```
 
+Errors:
+
+- `401` — wrong email or password
+
 ### `POST /auth/refresh`
 
 Request:
 
 ```json
-{
-  "access_token": "<existing-jwt>"
-}
+{ "access_token": "<existing-valid-jwt>" }
 ```
 
 Response `200`:
@@ -179,20 +229,19 @@ Response `200`:
 }
 ```
 
-Notes:
+Errors:
 
-- This works only if provided token is still valid.
-- If expired/invalid -> `401`.
+- `401` — token invalid or already expired (must re-login)
 
 ### `GET /auth/me` (protected)
 
-Response `200`: same shape as register response.
+Response `200`: User object.
 
 ### `PATCH /auth/me` (protected)
 
-Partial update of current user's profile fields.
+Partial update. Only `name` and `about` can be changed.
 
-Request example:
+Request:
 
 ```json
 {
@@ -201,39 +250,34 @@ Request example:
 }
 ```
 
-Response `200`:
-
-```json
-{
-  "id": 1,
-  "name": "John Updated",
-  "email": "john@example.com",
-  "avatar_url": "/uploads/avatars/user_1_xxx.jpg",
-  "about": "Serving in campus ministry"
-}
-```
+Response `200`: User object.
 
 ### `POST /auth/me/avatar` (protected)
 
-Uploads avatar as `multipart/form-data`.
+Upload avatar as `multipart/form-data`.
 
-Form field:
+Form field: `avatar` (file)
 
-- `avatar`: file
+Allowed types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`, `image/heic`, `image/heif`
 
-Response `200`: same shape as user response, with updated `avatar_url`.
+Max file size: `5 MB`
 
-Avatar rules:
+Behavior: replaces the previous avatar file if one existed.
 
-- Allowed content types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`
-- Max file size: `5MB`
-- If user had previous local avatar, it is replaced
+Response `200`: User object with updated `avatar_url`.
+
+Errors:
+
+- `400` — unsupported format or empty file
+- `413` — file exceeds 5 MB
+
+---
 
 ## Methods
 
 ### `GET /methods` (protected)
 
-Returns current user's custom methods + default methods.
+Returns default methods + current user's custom methods.
 
 Response `200`:
 
@@ -261,8 +305,10 @@ Response `201`:
 
 Errors:
 
-- `400` if name is empty
-- `409` if duplicate name for same user
+- `400` — empty name
+- `409` — user already has a method with that name
+
+---
 
 ## Believers
 
@@ -285,45 +331,44 @@ Request example:
 }
 ```
 
-Response `201`: full `BelieverResponse`.
+Response `201`: Believer response.
+
+Errors:
+
+- `404` — method_id not found or not available to current user
 
 ### `GET /believers` (protected)
 
-- Returns only believers of current authenticated user.
+Returns only believers of the authenticated user, sorted by `met_at` descending.
 
 ### `GET /believers/my` (protected)
 
-- Also returns only believers of current authenticated user.
+Same as `GET /believers`. Both return only current user's believers.
 
 ### `GET /believers/all` (public)
 
-- Returns believers of all users in the system.
+Returns believers of all users, sorted by `met_at` descending.
 
 ### `GET /believers/latest` (public)
 
 Query params:
 
-- `date_from` (optional, `YYYY-MM-DD`)
-- `date_to` (optional, `YYYY-MM-DD`)
+- `date_from` — optional, `YYYY-MM-DD`
+- `date_to` — optional, `YYYY-MM-DD`
 
-Behavior:
-
-- Returns max 20 believers.
-- Sorted by `met_at` descending (latest first).
-- Applies date filter to `met_at`.
+Returns max **20** believers sorted by `met_at` descending, filtered by the date range if provided.
 
 ### `GET /believers/testimony-of-day` (public)
 
 Query params:
 
-- `day` optional (`YYYY-MM-DD`)
+- `day` — optional, `YYYY-MM-DD` (defaults to today on the server)
 
-Behavior:
+Returns one deterministic believer for the day. Only believers with a non-empty `testimony` are eligible. Selection rotates daily.
 
-- Selects one deterministic believer for the day.
-- Only from believers where `testimony` is not empty.
-- If `day` missing, backend uses today.
-- If no testimonies exist -> `404`.
+Errors:
+
+- `404` — no believers with testimony exist
 
 ### `GET /believers/stats/accepted-jesus-count` (public)
 
@@ -333,56 +378,172 @@ Response:
 { "count": 123 }
 ```
 
-Count logic:
-
-- Counts believers with stage not equal to `interested`.
-- Included stages: `receivedJesus`, `joinedCommunity`, `baptised`, `evangelist`.
+Counts believers with `stage` ≠ `interested` (i.e. `receivedJesus`, `joinedCommunity`, `baptised`, `evangelist`).
 
 ### `GET /believers/{believer_id}` (protected)
 
-- Returns believer only if it belongs to current user.
-- Otherwise `404`.
+Returns the believer only if it belongs to the current user.
+
+Errors: `404` if not found or not owned.
 
 ### `PATCH /believers/{believer_id}` (protected)
 
-- Partial update.
-- Only believer owner can update.
-- If `method_id` provided, method must be available for current user (default or own).
+Partial update. Only the owner can update. If `method_id` is included, it must be a default or user-owned method.
+
+Response `200`: Believer response.
 
 ### `DELETE /believers/{believer_id}` (protected)
 
-- Deletes believer only if it belongs to current user.
-- Response `204`.
+Deletes the believer. Only the owner can delete.
+
+Response `204`.
 
 ---
 
-## Error behavior (important for mobile AI agent)
+## Outreach Statistics
 
-- `401`:
-  - missing/invalid/expired bearer token on protected endpoints
-  - invalid token in `/auth/refresh`
-- `404`:
-  - believer not found or not owned by user on protected believer endpoints
-  - evangelism method not found/not available for this user
-  - no testimony found for testimony-of-day endpoint
-- `409`:
-  - register with existing email
-  - creating duplicate custom method name
-- `422`:
-  - invalid request shape/type (FastAPI validation)
+Each user accumulates **a list** of outreach statistics records, one per outreach event.
+`outreach_date` is set manually by the user.
+
+### `POST /outreach-statistics` (protected)
+
+Create a new statistics record for the authenticated user.
+
+Request example:
+
+```json
+{
+  "outreach_date": "2026-06-01",
+  "gospels_told": 12,
+  "salvation_prayed_unreachable": 3,
+  "scriptures_distributed": 25,
+  "healings_deliverances": 4
+}
+```
+
+- `outreach_date` is required.
+- Counter fields default to `0` if omitted.
+- A user may have **multiple** records (no uniqueness constraint).
+
+Response `201`: OutreachStatistics response.
+
+### `GET /outreach-statistics/me` (protected)
+
+Returns **all** outreach statistics records for the current user, sorted by `outreach_date` descending (newest first).
+
+Response `200`:
+
+```json
+[
+  {
+    "id": 3,
+    "user_id": 1,
+    "outreach_date": "2026-06-05",
+    "gospels_told": 8,
+    "salvation_prayed_unreachable": 1,
+    "scriptures_distributed": 10,
+    "healings_deliverances": 2,
+    "created_at": "2026-06-05T18:00:00+00:00",
+    "updated_at": "2026-06-05T18:00:00+00:00"
+  }
+]
+```
+
+Returns an empty array `[]` if no records exist.
+
+### `GET /outreach-statistics/all` (public)
+
+Returns outreach statistics of **all users**, sorted by `outreach_date` descending.
+Each record includes the full user object.
+
+Response `200`:
+
+```json
+[
+  {
+    "id": 3,
+    "user_id": 1,
+    "outreach_date": "2026-06-05",
+    "gospels_told": 8,
+    "salvation_prayed_unreachable": 1,
+    "scriptures_distributed": 10,
+    "healings_deliverances": 2,
+    "created_at": "2026-06-05T18:00:00+00:00",
+    "updated_at": "2026-06-05T18:00:00+00:00",
+    "user": {
+      "id": 1,
+      "name": "John",
+      "email": "john@example.com",
+      "avatar_url": null,
+      "about": null
+    }
+  }
+]
+```
+
+### `GET /outreach-statistics/{statistics_id}` (protected)
+
+Returns one record by id. Only the owner can access it.
+
+Response `200`: OutreachStatistics response.
+
+Errors: `404` if not found or not owned.
+
+### `PATCH /outreach-statistics/{statistics_id}` (protected)
+
+Partial update by id. Only the owner can update.
+
+Request example:
+
+```json
+{
+  "outreach_date": "2026-06-06",
+  "gospels_told": 15
+}
+```
+
+All fields are optional. Omitted fields are left unchanged.
+
+Response `200`: OutreachStatistics response.
+
+Errors: `404` if not found or not owned.
+
+### `DELETE /outreach-statistics/{statistics_id}` (protected)
+
+Deletes the record. Only the owner can delete.
+
+Response `204`.
+
+Errors: `404` if not found or not owned.
 
 ---
 
-## Recommended mobile flow
+## Error reference
 
-1. Register (`/auth/register`) or login (`/auth/login`).
-2. Save `access_token` in secure mobile storage.
-3. Load methods (`/methods`) and cache IDs for believer creation.
+| Code  | When                                                                                                       |
+| ----- | ---------------------------------------------------------------------------------------------------------- |
+| `401` | Missing/invalid/expired bearer token; invalid token in `/auth/refresh`                                     |
+| `404` | Resource not found or not owned by current user; method not available; no testimonies for testimony-of-day |
+| `409` | Email already registered; duplicate custom method name                                                     |
+| `413` | Avatar file exceeds 5 MB                                                                                   |
+| `422` | Invalid request shape/type (FastAPI validation error)                                                      |
+
+---
+
+## Recommended mobile integration flow
+
+1. Register (`POST /auth/register`) or login (`POST /auth/login`). Save `access_token` in secure storage.
+2. On app start, call `GET /auth/me` to restore session.
+3. Load methods (`GET /methods`) and cache them for believer creation.
 4. Create and manage own believers via protected endpoints.
-5. Use public analytics endpoints for app-wide widgets:
-   - `/believers/all`
-   - `/believers/latest`
-   - `/believers/testimony-of-day`
-   - `/believers/stats/accepted-jesus-count`
-6. Before token expiry, call `/auth/refresh` with current valid token.
-
+5. Create outreach statistics after each outreach event (`POST /outreach-statistics`), providing `outreach_date` manually.
+6. Show own stats history via `GET /outreach-statistics/me` (list, newest first).
+7. Edit a record via `PATCH /outreach-statistics/{id}`, delete via `DELETE /outreach-statistics/{id}`.
+8. Use public endpoints for community-wide widgets:
+   - `GET /believers/all` — all believers in system
+   - `GET /believers/latest` — recent believers with date filter
+   - `GET /believers/testimony-of-day` — daily rotating testimony
+   - `GET /believers/stats/accepted-jesus-count` — total who accepted Jesus
+   - `GET /outreach-statistics/all` — all outreach records with user info, newest first
+9. Before token expiry (7 days), call `POST /auth/refresh` with the current valid token.
+   If token already expired, re-login is required.
