@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -25,6 +26,7 @@ class UserProfileCache {
   }
 
   Future<String?> loadAvatarLocalPath() async {
+    if (kIsWeb) return null;
     final prefs = await SharedPreferences.getInstance();
     final path = prefs.getString(_avatarPathKey);
     if (path == null || path.isEmpty) return null;
@@ -40,6 +42,7 @@ class UserProfileCache {
     required BackendApi api,
     required String? Function(String? raw) resolveUrl,
   }) async {
+    if (kIsWeb) return null;
     final normalizedUrl = (avatarUrl ?? '').trim();
     if (normalizedUrl.isEmpty) {
       await _removeAvatarFile();
@@ -73,6 +76,7 @@ class UserProfileCache {
   }
 
   Future<String?> saveAvatarFromLocalFile(String sourcePath) async {
+    if (kIsWeb) return null;
     final source = File(sourcePath);
     if (!source.existsSync()) return loadAvatarLocalPath();
 

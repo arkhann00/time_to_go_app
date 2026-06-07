@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -17,10 +18,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'backend_api.dart';
 import 'user_profile_cache.dart';
 
-bool get _isApple => Platform.isIOS || Platform.isMacOS;
+bool get _isApple => !kIsWeb && (Platform.isIOS || Platform.isMacOS || Platform.isAndroid);
 
 ImageProvider? _profileAvatarImage(String? localPath, String? networkUrl) {
-  if (localPath != null &&
+  if (!kIsWeb &&
+      localPath != null &&
       localPath.isNotEmpty &&
       File(localPath).existsSync()) {
     return FileImage(File(localPath));
@@ -6448,7 +6450,7 @@ class _AccountEditSheetState extends State<AccountEditSheet> {
                       children: [
                         CircleAvatar(
                           radius: 30,
-                          foregroundImage: _avatarFile != null
+                          foregroundImage: _avatarFile != null && !kIsWeb
                               ? FileImage(File(_avatarFile!.path))
                               : null,
                           child: _avatarFile == null
