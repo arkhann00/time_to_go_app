@@ -36,6 +36,12 @@ This file captures the current implementation context for future agents.
   - `GET /believers/latest`
   - `GET /believers/testimony-of-day`
   - `GET /believers/stats/accepted-jesus-count`
+  - `GET /outreach-statistics/summary` (type=general|personal)
+  - `GET /outreach-statistics/me`
+  - `POST /outreach-statistics/add`
+  - `PATCH /outreach-statistics/me`
+  - `POST /outreach-statistics/reset`
+  - `GET /outreach-statistics/all`
 
 ## Main UX Decisions Already Implemented
 

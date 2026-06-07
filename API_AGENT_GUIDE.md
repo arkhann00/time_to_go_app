@@ -3,6 +3,9 @@
 This file is the authoritative API contract for mobile app integration.
 Use it as the single source of truth for endpoints, auth, request/response shapes, and business rules.
 
+> **BREAKING CHANGES (2026-06-07)** — Outreach Statistics were fully redesigned.
+> See the [Breaking changes](#breaking-changes-2026-06-07) section before integrating.
+
 ## Base
 
 - Base URL (local): `http://127.0.0.1:8000`
@@ -37,6 +40,7 @@ Use it as the single source of truth for endpoints, auth, request/response shape
 - `GET /believers/stats/accepted-jesus-count`
 - `GET /believers/latest`
 - `GET /outreach-statistics/all`
+- `GET /outreach-statistics/summary`
 
 ### Protected endpoints (bearer required)
 
@@ -51,11 +55,10 @@ Use it as the single source of truth for endpoints, auth, request/response shape
 - `GET /believers/{believer_id}`
 - `PATCH /believers/{believer_id}`
 - `DELETE /believers/{believer_id}`
-- `POST /outreach-statistics`
 - `GET /outreach-statistics/me`
-- `GET /outreach-statistics/{statistics_id}`
-- `PATCH /outreach-statistics/{statistics_id}`
-- `DELETE /outreach-statistics/{statistics_id}`
+- `POST /outreach-statistics/add`
+- `PATCH /outreach-statistics/me`
+- `POST /outreach-statistics/reset`
 
 ---
 
@@ -125,32 +128,37 @@ Public list endpoints (`GET /believers/all`, `GET /believers/latest`, `GET /beli
 
 - `owner`: `{ id, name, avatar_url }`
 
-### Outreach Statistics
+### Outreach Statistics ⚠️ REDESIGNED
 
-Each user can have **multiple** outreach statistics records, one per outreach event/day.
-The `outreach_date` is set manually by the user and identifies when the outreach took place.
+Each user has **exactly one** cumulative statistics record. There is no list of records.
+`outreach_date` no longer exists.
 
-Create/update fields:
+Fields:
 
-| Field                          | Type         | Required on create | Notes                                      |
-| ------------------------------ | ------------ | ------------------ | ------------------------------------------ |
-| `outreach_date`                | `YYYY-MM-DD` | yes                | Date of the outreach event                 |
-| `gospels_told`                 | integer ≥ 0  | no (default `0`)   | Number of gospel presentations             |
-| `salvation_prayed_unreachable` | integer ≥ 0  | no (default `0`)   | Prayed for salvation but later unreachable |
-| `scriptures_distributed`       | integer ≥ 0  | no (default `0`)   | NT / Gospel of John copies given out       |
-| `healings_deliverances`        | integer ≥ 0  | no (default `0`)   | People who received healing or deliverance |
+| Field                          | Type              | Notes                        |
+| ------------------------------ | ----------------- | ---------------------------- |
+| `id`                           | integer           |                              |
+| `user_id`                      | integer           | unique — one record per user |
+| `gospels_told`                 | integer ≥ 0       | running total                |
+| `salvation_prayed_unreachable` | integer ≥ 0       | running total                |
+| `scriptures_distributed`       | integer ≥ 0       | running total                |
+| `healings_deliverances`        | integer ≥ 0       | running total                |
+| `created_at`                   | ISO 8601 datetime |                              |
+| `updated_at`                   | ISO 8601 datetime |                              |
 
-Response fields:
+`/outreach-statistics/all` additionally returns `user: { id, name, email, avatar_url, about }` per record.
 
-- All fields above plus:
-  - `id`: integer
-  - `user_id`: integer
-  - `created_at`: ISO 8601 datetime
-  - `updated_at`: ISO 8601 datetime
+### Summary Statistics (new)
 
-List-all response (`/outreach-statistics/all`) additionally includes:
+Aggregated view combining Believer counts and Outreach Statistics totals.
 
-- `user`: full `User` object (`id`, `name`, `email`, `avatar_url`, `about`)
+| Field                      | Meaning                                                        |
+| -------------------------- | -------------------------------------------------------------- |
+| `total_heard_gospel`       | All believers + `gospels_told` total                           |
+| `heard_gospel_no_contact`  | `gospels_told` total + believers with no phone AND no telegram |
+| `heard_gospel_has_contact` | Believers who have phone OR telegram                           |
+| `scriptures_distributed`   | `scriptures_distributed` total                                 |
+| `healings_deliverances`    | `healings_deliverances` total                                  |
 
 ---
 
@@ -400,60 +408,118 @@ Response `204`.
 
 ---
 
-## Outreach Statistics
+## Outreach Statistics ⚠️ REDESIGNED
 
-Each user accumulates **a list** of outreach statistics records, one per outreach event.
-`outreach_date` is set manually by the user.
+> Previous endpoints `POST /outreach-statistics`, `GET /outreach-statistics/{id}`,
+> `PATCH /outreach-statistics/{id}`, `DELETE /outreach-statistics/{id}` **no longer exist**.
+> Remove all calls to them. See new endpoints below.
 
-### `POST /outreach-statistics` (protected)
+Each user now has **exactly one** cumulative record. Adding statistics accumulates values on top of the existing totals. `outreach_date` is gone.
 
-Create a new statistics record for the authenticated user.
+### `GET /outreach-statistics/summary` (public)
 
-Request example:
+Main screen aggregated statistics. Combines believer data and outreach statistics totals.
 
-```json
-{
-  "outreach_date": "2026-06-01",
-  "gospels_told": 12,
-  "salvation_prayed_unreachable": 3,
-  "scriptures_distributed": 25,
-  "healings_deliverances": 4
-}
-```
+Query params:
 
-- `outreach_date` is required.
-- Counter fields default to `0` if omitted.
-- A user may have **multiple** records (no uniqueness constraint).
-
-Response `201`: OutreachStatistics response.
-
-### `GET /outreach-statistics/me` (protected)
-
-Returns **all** outreach statistics records for the current user, sorted by `outreach_date` descending (newest first).
+- `type` — `personal` or `general` (default: `general`)
+  - `personal` — only data created by the authenticated user
+  - `general` — data from all users
 
 Response `200`:
 
 ```json
-[
-  {
-    "id": 3,
-    "user_id": 1,
-    "outreach_date": "2026-06-05",
-    "gospels_told": 8,
-    "salvation_prayed_unreachable": 1,
-    "scriptures_distributed": 10,
-    "healings_deliverances": 2,
-    "created_at": "2026-06-05T18:00:00+00:00",
-    "updated_at": "2026-06-05T18:00:00+00:00"
-  }
-]
+{
+  "total_heard_gospel": 150,
+  "heard_gospel_no_contact": 120,
+  "heard_gospel_has_contact": 30,
+  "scriptures_distributed": 45,
+  "healings_deliverances": 12
+}
 ```
 
-Returns an empty array `[]` if no records exist.
+Field definitions:
+
+| Field                      | Formula                                                                |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `total_heard_gospel`       | `count(believers)` + `sum(gospels_told)`                               |
+| `heard_gospel_no_contact`  | `sum(gospels_told)` + `count(believers with no phone AND no telegram)` |
+| `heard_gospel_has_contact` | `count(believers with phone OR telegram)`                              |
+| `scriptures_distributed`   | `sum(scriptures_distributed)`                                          |
+| `healings_deliverances`    | `sum(healings_deliverances)`                                           |
+
+Note: `personal` requires a valid bearer token. `general` works without auth too.
+
+### `GET /outreach-statistics/me` (protected)
+
+Returns the current user's single statistics record.
+Auto-creates a zeroed record if none exists yet.
+
+Response `200`:
+
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "gospels_told": 42,
+  "salvation_prayed_unreachable": 5,
+  "scriptures_distributed": 20,
+  "healings_deliverances": 8,
+  "created_at": "2026-06-01T10:00:00+00:00",
+  "updated_at": "2026-06-07T14:30:00+00:00"
+}
+```
+
+### `POST /outreach-statistics/add` (protected)
+
+Accumulates values on top of the user's current totals.
+Use this when the user fills in an outreach form — the new values are **added** to existing ones.
+Auto-creates the record if it does not exist yet.
+
+Request:
+
+```json
+{
+  "gospels_told": 5,
+  "salvation_prayed_unreachable": 1,
+  "scriptures_distributed": 10,
+  "healings_deliverances": 2
+}
+```
+
+All fields default to `0` if omitted.
+
+Response `200`: OutreachStatistics record with updated totals.
+
+### `PATCH /outreach-statistics/me` (protected)
+
+Directly sets (overwrites) specific fields on the current user's record.
+Use this for the "edit statistics" UI where the user manually corrects values.
+
+Request (all fields optional):
+
+```json
+{
+  "gospels_told": 100,
+  "scriptures_distributed": 50
+}
+```
+
+Omitted fields are left unchanged.
+
+Response `200`: OutreachStatistics record.
+
+### `POST /outreach-statistics/reset` (protected)
+
+Resets all counters to `0` for the current user.
+
+No request body required.
+
+Response `200`: OutreachStatistics record with all fields set to `0`.
 
 ### `GET /outreach-statistics/all` (public)
 
-Returns outreach statistics of **all users**, sorted by `outreach_date` descending.
+Returns one statistics record per user (everyone in the system).
 Each record includes the full user object.
 
 Response `200`:
@@ -461,15 +527,14 @@ Response `200`:
 ```json
 [
   {
-    "id": 3,
+    "id": 1,
     "user_id": 1,
-    "outreach_date": "2026-06-05",
-    "gospels_told": 8,
-    "salvation_prayed_unreachable": 1,
-    "scriptures_distributed": 10,
-    "healings_deliverances": 2,
-    "created_at": "2026-06-05T18:00:00+00:00",
-    "updated_at": "2026-06-05T18:00:00+00:00",
+    "gospels_told": 42,
+    "salvation_prayed_unreachable": 5,
+    "scriptures_distributed": 20,
+    "healings_deliverances": 8,
+    "created_at": "2026-06-01T10:00:00+00:00",
+    "updated_at": "2026-06-07T14:30:00+00:00",
     "user": {
       "id": 1,
       "name": "John",
@@ -480,41 +545,6 @@ Response `200`:
   }
 ]
 ```
-
-### `GET /outreach-statistics/{statistics_id}` (protected)
-
-Returns one record by id. Only the owner can access it.
-
-Response `200`: OutreachStatistics response.
-
-Errors: `404` if not found or not owned.
-
-### `PATCH /outreach-statistics/{statistics_id}` (protected)
-
-Partial update by id. Only the owner can update.
-
-Request example:
-
-```json
-{
-  "outreach_date": "2026-06-06",
-  "gospels_told": 15
-}
-```
-
-All fields are optional. Omitted fields are left unchanged.
-
-Response `200`: OutreachStatistics response.
-
-Errors: `404` if not found or not owned.
-
-### `DELETE /outreach-statistics/{statistics_id}` (protected)
-
-Deletes the record. Only the owner can delete.
-
-Response `204`.
-
-Errors: `404` if not found or not owned.
 
 ---
 
@@ -530,20 +560,57 @@ Errors: `404` if not found or not owned.
 
 ---
 
+## Breaking changes (2026-06-07)
+
+The entire Outreach Statistics API was redesigned. If the mobile app has any of the following integrations, they must be updated:
+
+### Removed endpoints — delete all calls
+
+| Old endpoint                       | Replacement                       |
+| ---------------------------------- | --------------------------------- |
+| `POST /outreach-statistics`        | `POST /outreach-statistics/add`   |
+| `GET /outreach-statistics/{id}`    | `GET /outreach-statistics/me`     |
+| `PATCH /outreach-statistics/{id}`  | `PATCH /outreach-statistics/me`   |
+| `DELETE /outreach-statistics/{id}` | `POST /outreach-statistics/reset` |
+
+### Changed response shape
+
+- `GET /outreach-statistics/me` now returns a **single object**, not an array.
+- The `outreach_date` field no longer exists in any response.
+
+### Changed data model
+
+- Each user has exactly **one** statistics record (unique constraint on `user_id`).
+- Statistics are cumulative totals, not per-event records.
+- `salvation_prayed_unreachable` still exists in the record but is **not** used in the summary calculation — it is available for display in the user's own stats screen if needed.
+
+### New main screen endpoint
+
+Replace any existing stats aggregation logic on the mobile side with:
+
+```
+GET /outreach-statistics/summary?type=general   // community-wide
+GET /outreach-statistics/summary?type=personal  // current user only (requires auth)
+```
+
+---
+
 ## Recommended mobile integration flow
 
 1. Register (`POST /auth/register`) or login (`POST /auth/login`). Save `access_token` in secure storage.
 2. On app start, call `GET /auth/me` to restore session.
 3. Load methods (`GET /methods`) and cache them for believer creation.
 4. Create and manage own believers via protected endpoints.
-5. Create outreach statistics after each outreach event (`POST /outreach-statistics`), providing `outreach_date` manually.
-6. Show own stats history via `GET /outreach-statistics/me` (list, newest first).
-7. Edit a record via `PATCH /outreach-statistics/{id}`, delete via `DELETE /outreach-statistics/{id}`.
-8. Use public endpoints for community-wide widgets:
-   - `GET /believers/all` — all believers in system
-   - `GET /believers/latest` — recent believers with date filter
-   - `GET /believers/testimony-of-day` — daily rotating testimony
-   - `GET /believers/stats/accepted-jesus-count` — total who accepted Jesus
-   - `GET /outreach-statistics/all` — all outreach records with user info, newest first
-9. Before token expiry (7 days), call `POST /auth/refresh` with the current valid token.
-   If token already expired, re-login is required.
+5. **Main screen stats**: call `GET /outreach-statistics/summary?type=general` (no auth needed). Switch to `?type=personal` for the personal tab.
+6. **Add outreach results**: call `POST /outreach-statistics/add` with the form values — they accumulate into the user's running total.
+7. **View own stats**: `GET /outreach-statistics/me` — returns a single record.
+8. **Edit stats**: `PATCH /outreach-statistics/me` — directly set field values.
+9. **Reset stats**: `POST /outreach-statistics/reset` — zeros all counters.
+10. Use public endpoints for community-wide widgets:
+    - `GET /believers/all` — all believers in system
+    - `GET /believers/latest` — recent believers with date filter
+    - `GET /believers/testimony-of-day` — daily rotating testimony
+    - `GET /believers/stats/accepted-jesus-count` — total who accepted Jesus
+    - `GET /outreach-statistics/all` — one record per user with user info
+11. Before token expiry (7 days), call `POST /auth/refresh` with the current valid token.
+    If token already expired, re-login is required.

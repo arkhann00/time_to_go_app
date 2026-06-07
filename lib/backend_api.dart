@@ -343,76 +343,52 @@ class BackendApi {
 
   // ── Outreach Statistics ──────────────────────────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> getAllOutreachStatistics({
-    String? dateFrom,
-    String? dateTo,
-  }) async {
-    final query = <String, String>{};
-    if (dateFrom != null && dateFrom.isNotEmpty) query['date_from'] = dateFrom;
-    if (dateTo != null && dateTo.isNotEmpty) query['date_to'] = dateTo;
-
-    final data = await _request(
-      'GET',
-      '/outreach-statistics/all',
-      query: query,
-    );
+  /// Returns one record per user (public endpoint).
+  Future<List<Map<String, dynamic>>> getAllOutreachStatistics() async {
+    final data = await _request('GET', '/outreach-statistics/all');
     return _asListOfMap(data);
   }
 
-  Future<List<Map<String, dynamic>>> getMyOutreachStatistics({
-    String? dateFrom,
-    String? dateTo,
-  }) async {
-    final query = <String, String>{};
-    if (dateFrom != null && dateFrom.isNotEmpty) query['date_from'] = dateFrom;
-    if (dateTo != null && dateTo.isNotEmpty) query['date_to'] = dateTo;
-
+  /// Returns the current user's single cumulative record.
+  /// Auto-creates a zeroed record if none exists yet.
+  Future<Map<String, dynamic>> getMyOutreachStatistics() async {
     final data = await _request(
       'GET',
       '/outreach-statistics/me',
       authRequired: true,
-      query: query,
     );
-    return _asListOfMap(data);
+    return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> createOutreachStatistics({
-    required String outreachDate,
+  /// Accumulates the given values on top of the user's current totals.
+  Future<Map<String, dynamic>> addOutreachStatistics({
     int gospelsTold = 0,
     int salvationPrayedUnreachable = 0,
     int scripturesDistributed = 0,
     int healingsDeliverances = 0,
-    String? note,
   }) async {
     final data = await _request(
       'POST',
-      '/outreach-statistics',
+      '/outreach-statistics/add',
       authRequired: true,
       body: {
-        'outreach_date': outreachDate,
         'gospels_told': gospelsTold,
         'salvation_prayed_unreachable': salvationPrayedUnreachable,
         'scriptures_distributed': scripturesDistributed,
         'healings_deliverances': healingsDeliverances,
-        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       },
     );
     return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> patchOutreachStatistics(
-    int statisticsId, {
-    String? outreachDate,
+  /// Directly overwrites specific fields on the current user's record.
+  Future<Map<String, dynamic>> patchOutreachStatisticsMe({
     int? gospelsTold,
     int? salvationPrayedUnreachable,
     int? scripturesDistributed,
     int? healingsDeliverances,
-    String? note,
   }) async {
     final body = <String, dynamic>{};
-    if (outreachDate != null && outreachDate.isNotEmpty) {
-      body['outreach_date'] = outreachDate;
-    }
     if (gospelsTold != null) body['gospels_told'] = gospelsTold;
     if (salvationPrayedUnreachable != null) {
       body['salvation_prayed_unreachable'] = salvationPrayedUnreachable;
@@ -423,23 +399,35 @@ class BackendApi {
     if (healingsDeliverances != null) {
       body['healings_deliverances'] = healingsDeliverances;
     }
-    if (note != null) body['note'] = note.trim();
-
     final data = await _request(
       'PATCH',
-      '/outreach-statistics/$statisticsId',
+      '/outreach-statistics/me',
       authRequired: true,
       body: body,
     );
     return _asMap(data);
   }
 
-  Future<void> deleteOutreachStatistics(int statisticsId) async {
-    await _request(
-      'DELETE',
-      '/outreach-statistics/$statisticsId',
+  /// Resets all counters to 0 for the current user.
+  Future<Map<String, dynamic>> resetOutreachStatistics() async {
+    final data = await _request(
+      'POST',
+      '/outreach-statistics/reset',
       authRequired: true,
-      expectedCodes: const {204},
     );
+    return _asMap(data);
+  }
+
+  /// Aggregated summary combining believer counts and outreach stat totals.
+  /// [type] is `'general'` (public, all users) or `'personal'` (requires auth).
+  Future<Map<String, dynamic>> getOutreachStatisticsSummary({
+    String type = 'general',
+  }) async {
+    final data = await _request(
+      'GET',
+      '/outreach-statistics/summary',
+      query: {'type': type},
+    );
+    return _asMap(data);
   }
 }

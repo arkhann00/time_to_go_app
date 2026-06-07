@@ -134,12 +134,10 @@ class _AppleSection extends StatelessWidget {
 class OutreachStatEntry {
   final int id;
   final int userId;
-  final DateTime outreachDate;
   final int gospelsTold;
   final int salvationPrayedUnreachable;
   final int scripturesDistributed;
   final int healingsDeliverances;
-  final String? note;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String userName;
@@ -148,34 +146,27 @@ class OutreachStatEntry {
   OutreachStatEntry({
     required this.id,
     required this.userId,
-    required this.outreachDate,
     required this.gospelsTold,
     required this.salvationPrayedUnreachable,
     required this.scripturesDistributed,
     required this.healingsDeliverances,
     required this.createdAt,
     required this.updatedAt,
-    required this.userName,
+    this.userName = '',
     this.userAvatarUrl,
-    this.note,
   });
 
   factory OutreachStatEntry.fromMap(Map<String, dynamic> m) {
     final user = m['user'] as Map<String, dynamic>? ?? {};
-
     return OutreachStatEntry(
       id: (m['id'] as num?)?.toInt() ?? 0,
       userId: (m['user_id'] as num?)?.toInt() ?? 0,
-      outreachDate:
-          DateTime.tryParse(m['outreach_date'] as String? ?? '') ??
-          DateTime.now(),
       gospelsTold: (m['gospels_told'] as num?)?.toInt() ?? 0,
       salvationPrayedUnreachable:
           (m['salvation_prayed_unreachable'] as num?)?.toInt() ?? 0,
       scripturesDistributed:
           (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
       healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
-      note: (m['note'] as String?)?.trim(),
       createdAt:
           DateTime.tryParse(m['created_at'] as String? ?? '') ?? DateTime.now(),
       updatedAt:
@@ -184,6 +175,34 @@ class OutreachStatEntry {
       userAvatarUrl: user['avatar_url'] as String?,
     );
   }
+}
+
+class SummaryStats {
+  final int totalHeardGospel;
+  final int heardGospelNoContact;
+  final int heardGospelHasContact;
+  final int scripturesDistributed;
+  final int healingsDeliverances;
+
+  const SummaryStats({
+    this.totalHeardGospel = 0,
+    this.heardGospelNoContact = 0,
+    this.heardGospelHasContact = 0,
+    this.scripturesDistributed = 0,
+    this.healingsDeliverances = 0,
+  });
+
+  factory SummaryStats.fromMap(Map<String, dynamic> m) => SummaryStats(
+    totalHeardGospel: (m['total_heard_gospel'] as num?)?.toInt() ?? 0,
+    heardGospelNoContact:
+        (m['heard_gospel_no_contact'] as num?)?.toInt() ?? 0,
+    heardGospelHasContact:
+        (m['heard_gospel_has_contact'] as num?)?.toInt() ?? 0,
+    scripturesDistributed:
+        (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
+    healingsDeliverances:
+        (m['healings_deliverances'] as num?)?.toInt() ?? 0,
+  );
 }
 
 /// iOS form row: leading squircle icon + Cupertino-style text field.
@@ -1011,9 +1030,10 @@ class _AppleStatCard extends StatelessWidget {
 
 class _OutreachStatsSheet extends StatefulWidget {
   final S tr;
+  /// When non-null, the form is pre-filled for editing (direct set via PATCH).
+  /// When null, the form is empty for adding (accumulate via POST /add).
   final OutreachStatEntry? existing;
   final Future<void> Function({
-    required String outreachDate,
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
@@ -1036,7 +1056,6 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
   late final TextEditingController _salvation;
   late final TextEditingController _scriptures;
   late final TextEditingController _healings;
-  late DateTime _outreachDate;
   bool _saving = false;
   String? _error;
 
@@ -1044,7 +1063,6 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
   void initState() {
     super.initState();
     final e = widget.existing;
-    _outreachDate = e?.outreachDate ?? DateTime.now();
     _gospels = TextEditingController(text: e != null ? '${e.gospelsTold}' : '');
     _salvation = TextEditingController(
       text: e != null ? '${e.salvationPrayedUnreachable}' : '',
@@ -1068,59 +1086,6 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
 
   int _parse(TextEditingController c) => int.tryParse(c.text.trim()) ?? 0;
 
-  Future<void> _pickDate() async {
-    if (_isApple) {
-      DateTime temp = _outreachDate;
-      await showCupertinoModalPopup<void>(
-        context: context,
-        builder: (_) => Container(
-          height: 280,
-          color: CupertinoColors.systemBackground.resolveFrom(context),
-          child: Column(
-            children: [
-              SizedBox(
-                height: 44,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    CupertinoButton(
-                      child: Text(widget.tr.cancel),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    CupertinoButton(
-                      child: Text(widget.tr.done),
-                      onPressed: () {
-                        setState(() => _outreachDate = temp);
-                        Navigator.of(context).pop();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: CupertinoDatePicker(
-                  mode: CupertinoDatePickerMode.date,
-                  initialDateTime: _outreachDate,
-                  minimumDate: DateTime(2020),
-                  maximumDate: DateTime.now().add(const Duration(days: 1)),
-                  onDateTimeChanged: (d) => temp = d,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-      return;
-    }
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _outreachDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-    );
-    if (d != null && mounted) setState(() => _outreachDate = d);
-  }
-
   Future<void> _save() async {
     setState(() {
       _saving = true;
@@ -1128,7 +1093,6 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
     });
     try {
       await widget.onSave(
-        outreachDate: DateFormat('yyyy-MM-dd').format(_outreachDate),
         gospelsTold: _parse(_gospels),
         salvationPrayedUnreachable: _parse(_salvation),
         scripturesDistributed: _parse(_scriptures),
@@ -1146,8 +1110,9 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
   @override
   Widget build(BuildContext context) {
     final tr = widget.tr;
+    final isEdit = widget.existing != null;
     final viewInsets = MediaQuery.of(context).viewInsets;
-    final height = MediaQuery.of(context).size.height * 0.82;
+    final height = MediaQuery.of(context).size.height * 0.72;
 
     return Container(
       height: height,
@@ -1185,7 +1150,7 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
                     children: [
                       Expanded(
                         child: Text(
-                          tr.outreachStatsHeader,
+                          isEdit ? tr.editOutreachStats : tr.addOutreachStats,
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w600,
@@ -1221,18 +1186,6 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _AppleSection(
-                            children: [
-                              _AppleTapRow(
-                                icon: CupertinoIcons.calendar,
-                                iconBackground: const Color(0xFF007AFF),
-                                title: tr.outreachDate,
-                                value: DateFormat('dd.MM.yyyy').format(_outreachDate),
-                                onTap: _pickDate,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
                           _AppleSection(
                             children: [
                               _AppleInputRow(
@@ -1486,7 +1439,7 @@ class _TimeToGoAppState extends State<TimeToGoApp> {
   AppThemeMode _themeMode = AppThemeMode.system;
   AppLanguage _language = AppLanguage.ru;
   String? _accessToken;
-  bool _continueOffline = false;
+  bool _continueOffline = true;
   bool _migrateLocalOnNextAuth = false;
   bool _ready = false;
 
@@ -1537,7 +1490,7 @@ class _TimeToGoAppState extends State<TimeToGoApp> {
     _backendApi.setAccessToken(null);
     setState(() {
       _accessToken = null;
-      _continueOffline = false;
+      _continueOffline = true;
       _migrateLocalOnNextAuth = false;
     });
   }
@@ -1683,118 +1636,6 @@ ThemeData _buildTheme(Brightness brightness) {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
   );
-}
-
-// Row used in DashboardPage — per-user card with 2x2 mini stats grid
-class _DashboardOutreachRow extends StatelessWidget {
-  final OutreachStatEntry entry;
-  final BackendApi backendApi;
-  final S tr;
-
-  const _DashboardOutreachRow({
-    required this.entry,
-    required this.backendApi,
-    required this.tr,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final avatarUrl = entry.userAvatarUrl != null
-        ? backendApi.resolveUrl(entry.userAvatarUrl!).toString()
-        : null;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // User header
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: theme.colorScheme.primary.withOpacity(0.14),
-                foregroundImage: avatarUrl != null
-                    ? NetworkImage(avatarUrl)
-                    : null,
-                child: avatarUrl == null
-                    ? Text(
-                        entry.userName.isNotEmpty
-                            ? entry.userName[0].toUpperCase()
-                            : '?',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.primary,
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(entry.userName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                    Text(
-                      DateFormat('dd.MM.yyyy').format(entry.outreachDate),
-                      style: TextStyle(fontSize: 12, color: _iosSecondaryLabel(context)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Stats grid 2x2
-          Row(
-            children: [
-              Expanded(
-                child: _MiniStatItem(
-                  icon: CupertinoIcons.bubble_left_fill,
-                  color: const Color(0xFF34C759),
-                  value: '${entry.gospelsTold}',
-                  label: tr.gospelsTold,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniStatItem(
-                  icon: CupertinoIcons.heart_fill,
-                  color: const Color(0xFFFF3B30),
-                  value: '${entry.salvationPrayedUnreachable}',
-                  label: tr.salvationPrayedUnreachable,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniStatItem(
-                  icon: CupertinoIcons.book_fill,
-                  color: const Color(0xFFFF9500),
-                  value: '${entry.scripturesDistributed}',
-                  label: tr.scripturesDistributed,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniStatItem(
-                  icon: CupertinoIcons.waveform_path_ecg,
-                  color: const Color(0xFF5856D6),
-                  value: '${entry.healingsDeliverances}',
-                  label: tr.healingsDeliverances,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _MiniStatItem extends StatelessWidget {
@@ -2318,16 +2159,16 @@ class _HomeScreenState extends State<HomeScreen> {
   BackendUser? _backendUser;
   String? _cachedAvatarPath;
   final UserProfileCache _profileCache = UserProfileCache();
-  int _heardGospelCount = 0;
-  int _acceptedJesusCount = 0;
   List<LatestTestimony> _latestTestimonies = [];
   bool _dashboardLoading = true;
   bool _loading = true;
   int _tab = 0;
 
-  List<OutreachStatEntry> _allOutreachStats = [];
-  List<OutreachStatEntry> _myOutreachStats = [];
-  bool _outreachStatsLoading = true;
+  SummaryStats? _generalSummary;
+  SummaryStats? _personalSummary;
+  bool _summaryLoading = true;
+  OutreachStatEntry? _myStats;
+  bool _myStatsLoading = true;
 
   BackendApi get _backendApi => widget.backendApi;
 
@@ -2407,21 +2248,28 @@ class _HomeScreenState extends State<HomeScreen> {
       // Fallback: keep whatever we already have (local/my believers).
     }
 
-    final dashboard = await _loadDashboardData();
+    final testimonies = await _loadTestimonies();
 
-    // Load outreach statistics
-    List<OutreachStatEntry> allOutreachStats = [];
-    List<OutreachStatEntry> myOutreachStats = [];
+    // Load summary stats
+    SummaryStats? generalSummary;
+    SummaryStats? personalSummary;
+    OutreachStatEntry? myStats;
     try {
-      final raw = await _backendApi.getAllOutreachStatistics();
-      allOutreachStats = raw.map(OutreachStatEntry.fromMap).toList();
+      generalSummary = SummaryStats.fromMap(
+        await _backendApi.getOutreachStatisticsSummary(type: 'general'),
+      );
     } catch (_) {}
 
     if (_backendApi.hasAuth) {
       try {
-        final rawMy = await _backendApi.getMyOutreachStatistics();
-        myOutreachStats = rawMy.map(OutreachStatEntry.fromMap).toList()
-          ..sort((a, b) => b.outreachDate.compareTo(a.outreachDate));
+        personalSummary = SummaryStats.fromMap(
+          await _backendApi.getOutreachStatisticsSummary(type: 'personal'),
+        );
+      } catch (_) {}
+      try {
+        myStats = OutreachStatEntry.fromMap(
+          await _backendApi.getMyOutreachStatistics(),
+        );
       } catch (_) {}
     }
 
@@ -2434,14 +2282,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ..addAll(mapItems);
       _backendUser = backendUser;
       _cachedAvatarPath = cachedAvatarPath;
-      _heardGospelCount = dashboard.heard;
-      _acceptedJesusCount = dashboard.accepted;
-      _latestTestimonies = dashboard.testimonies;
+      _latestTestimonies = testimonies;
       _dashboardLoading = false;
       _loading = false;
-      _allOutreachStats = allOutreachStats;
-      _myOutreachStats = myOutreachStats;
-      _outreachStatsLoading = false;
+      _generalSummary = generalSummary;
+      _personalSummary = personalSummary;
+      _summaryLoading = false;
+      _myStats = myStats;
+      _myStatsLoading = false;
     });
   }
 
@@ -2462,19 +2310,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<({int heard, int accepted, List<LatestTestimony> testimonies})>
-  _loadDashboardData() async {
-    var heard = 0;
-    var accepted = 0;
+  Future<List<LatestTestimony>> _loadTestimonies() async {
     var testimonies = <LatestTestimony>[];
-
-    try {
-      heard = (await _backendApi.getAllBelievers()).length;
-    } catch (_) {}
-
-    try {
-      accepted = await _backendApi.getAcceptedJesusCount();
-    } catch (_) {}
 
     try {
       final latest = await _backendApi.getLatestBelievers();
@@ -2510,7 +2347,29 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {}
     }
 
-    return (heard: heard, accepted: accepted, testimonies: testimonies);
+    return testimonies;
+  }
+
+  Future<void> _refreshSummary() async {
+    SummaryStats? general;
+    SummaryStats? personal;
+    try {
+      general = SummaryStats.fromMap(
+        await _backendApi.getOutreachStatisticsSummary(type: 'general'),
+      );
+    } catch (_) {}
+    if (_backendApi.hasAuth) {
+      try {
+        personal = SummaryStats.fromMap(
+          await _backendApi.getOutreachStatisticsSummary(type: 'personal'),
+        );
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      if (general != null) _generalSummary = general;
+      if (personal != null) _personalSummary = personal;
+    });
   }
 
   LatestTestimony? _latestTestimonyFromRaw(Map<String, dynamic> raw) {
@@ -2640,13 +2499,10 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _list.insert(0, result));
     await _save();
     await _syncCreateToBackend(result);
-    final dashboard = await _loadDashboardData();
+    final testimonies = await _loadTestimonies();
     if (!mounted) return;
-    setState(() {
-      _heardGospelCount = dashboard.heard;
-      _acceptedJesusCount = dashboard.accepted;
-      _latestTestimonies = dashboard.testimonies;
-    });
+    setState(() => _latestTestimonies = testimonies);
+    await _refreshSummary();
   }
 
   Future<void> _delete(NewBeliever b) async {
@@ -2659,13 +2515,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       // Local state stays source of truth when remote delete fails.
     }
-    final dashboard = await _loadDashboardData();
-    if (!mounted) return;
-    setState(() {
-      _heardGospelCount = dashboard.heard;
-      _acceptedJesusCount = dashboard.accepted;
-      _latestTestimonies = dashboard.testimonies;
-    });
+    await _refreshSummary();
   }
 
   Future<void> _updateStage(NewBeliever b, BelieverStage stage) async {
@@ -2680,13 +2530,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       // Keep local stage update even when backend sync fails.
     }
-    final dashboard = await _loadDashboardData();
-    if (!mounted) return;
-    setState(() {
-      _heardGospelCount = dashboard.heard;
-      _acceptedJesusCount = dashboard.accepted;
-      _latestTestimonies = dashboard.testimonies;
-    });
+    await _refreshSummary();
   }
 
   void _cacheRemoteMethods(List<Map<String, dynamic>> methods) {
@@ -2845,51 +2689,48 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _saveOutreachStats({
-    int? statisticsId,
-    required String outreachDate,
+  Future<void> _addOutreachStats({
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
     required int healingsDeliverances,
   }) async {
-    if (statisticsId == null) {
-      await _backendApi.createOutreachStatistics(
-        outreachDate: outreachDate,
-        gospelsTold: gospelsTold,
-        salvationPrayedUnreachable: salvationPrayedUnreachable,
-        scripturesDistributed: scripturesDistributed,
-        healingsDeliverances: healingsDeliverances,
-      );
-    } else {
-      await _backendApi.patchOutreachStatistics(
-        statisticsId,
-        outreachDate: outreachDate,
-        gospelsTold: gospelsTold,
-        salvationPrayedUnreachable: salvationPrayedUnreachable,
-        scripturesDistributed: scripturesDistributed,
-        healingsDeliverances: healingsDeliverances,
-      );
+    final result = await _backendApi.addOutreachStatistics(
+      gospelsTold: gospelsTold,
+      salvationPrayedUnreachable: salvationPrayedUnreachable,
+      scripturesDistributed: scripturesDistributed,
+      healingsDeliverances: healingsDeliverances,
+    );
+    if (mounted) {
+      setState(() => _myStats = OutreachStatEntry.fromMap(result));
     }
-
-    await _refreshOutreachStats();
+    await _refreshSummary();
   }
 
-  Future<void> _deleteOutreachStats(int statisticsId) async {
-    await _backendApi.deleteOutreachStatistics(statisticsId);
-    await _refreshOutreachStats();
+  Future<void> _editOutreachStats({
+    required int gospelsTold,
+    required int salvationPrayedUnreachable,
+    required int scripturesDistributed,
+    required int healingsDeliverances,
+  }) async {
+    final result = await _backendApi.patchOutreachStatisticsMe(
+      gospelsTold: gospelsTold,
+      salvationPrayedUnreachable: salvationPrayedUnreachable,
+      scripturesDistributed: scripturesDistributed,
+      healingsDeliverances: healingsDeliverances,
+    );
+    if (mounted) {
+      setState(() => _myStats = OutreachStatEntry.fromMap(result));
+    }
+    await _refreshSummary();
   }
 
-  Future<void> _refreshOutreachStats() async {
-    final rawAll = await _backendApi.getAllOutreachStatistics();
-    final rawMy = await _backendApi.getMyOutreachStatistics();
-
-    setState(() {
-      _allOutreachStats = rawAll.map(OutreachStatEntry.fromMap).toList()
-        ..sort((a, b) => b.outreachDate.compareTo(a.outreachDate));
-      _myOutreachStats = rawMy.map(OutreachStatEntry.fromMap).toList()
-        ..sort((a, b) => b.outreachDate.compareTo(a.outreachDate));
-    });
+  Future<void> _resetOutreachStats() async {
+    final result = await _backendApi.resetOutreachStatistics();
+    if (mounted) {
+      setState(() => _myStats = OutreachStatEntry.fromMap(result));
+    }
+    await _refreshSummary();
   }
 
   @override
@@ -2899,14 +2740,26 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = [
       DashboardPage(
         tr: tr,
-        heardGospelCount: _heardGospelCount,
-        acceptedJesusCount: _acceptedJesusCount,
         latestTestimonies: _latestTestimonies,
         loading: _dashboardLoading,
-        allOutreachStats: _allOutreachStats, // новое
-        outreachStatsLoading: _outreachStatsLoading, // новое
+        summaryLoading: _summaryLoading,
+        generalSummary: _generalSummary,
+        personalSummary: _personalSummary,
+        isAuthenticated: widget.isAuthenticated,
         onSettings: _openSettings,
-        backendApi: _backendApi,
+        onAddOutreachStats: widget.isAuthenticated
+            ? ({
+                required int gospelsTold,
+                required int salvationPrayedUnreachable,
+                required int scripturesDistributed,
+                required int healingsDeliverances,
+              }) => _addOutreachStats(
+                gospelsTold: gospelsTold,
+                salvationPrayedUnreachable: salvationPrayedUnreachable,
+                scripturesDistributed: scripturesDistributed,
+                healingsDeliverances: healingsDeliverances,
+              )
+            : null,
       ),
 
       BelieversPage(
@@ -2927,25 +2780,33 @@ class _HomeScreenState extends State<HomeScreen> {
         cachedAvatarPath: _cachedAvatarPath,
         isAuthenticated: widget.isAuthenticated,
         believers: _list,
-        myOutreachStats: _myOutreachStats,
+        myStats: _myStats,
+        myStatsLoading: _myStatsLoading,
         onOpenAuth: widget.onOpenAuth,
         onEditAccount: _editAccountProfile,
-        onSaveOutreachStats: ({
-          int? statisticsId,
-          required String outreachDate,
+        onAddOutreachStats: ({
           required int gospelsTold,
           required int salvationPrayedUnreachable,
           required int scripturesDistributed,
           required int healingsDeliverances,
-        }) => _saveOutreachStats(
-          statisticsId: statisticsId,
-          outreachDate: outreachDate,
+        }) => _addOutreachStats(
           gospelsTold: gospelsTold,
           salvationPrayedUnreachable: salvationPrayedUnreachable,
           scripturesDistributed: scripturesDistributed,
           healingsDeliverances: healingsDeliverances,
         ),
-        onDeleteOutreachStats: _deleteOutreachStats,
+        onEditOutreachStats: ({
+          required int gospelsTold,
+          required int salvationPrayedUnreachable,
+          required int scripturesDistributed,
+          required int healingsDeliverances,
+        }) => _editOutreachStats(
+          gospelsTold: gospelsTold,
+          salvationPrayedUnreachable: salvationPrayedUnreachable,
+          scripturesDistributed: scripturesDistributed,
+          healingsDeliverances: healingsDeliverances,
+        ),
+        onResetOutreachStats: _resetOutreachStats,
         onLogout: widget.onLogout,
         onSettings: _openSettings,
       ),
@@ -3055,29 +2916,41 @@ class _HomeScreenState extends State<HomeScreen> {
 // PAGES
 // ─────────────────────────────────────────────────────────────────────────────
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   final S tr;
-  final int heardGospelCount;
-  final int acceptedJesusCount;
   final List<LatestTestimony> latestTestimonies;
   final bool loading;
+  final bool summaryLoading;
+  final SummaryStats? generalSummary;
+  final SummaryStats? personalSummary;
+  final bool isAuthenticated;
   final VoidCallback onSettings;
-  final List<OutreachStatEntry> allOutreachStats;
-  final bool outreachStatsLoading;
-  final BackendApi backendApi;
+  final Future<void> Function({
+    required int gospelsTold,
+    required int salvationPrayedUnreachable,
+    required int scripturesDistributed,
+    required int healingsDeliverances,
+  })? onAddOutreachStats;
 
   const DashboardPage({
     super.key,
     required this.tr,
-    required this.heardGospelCount,
-    required this.acceptedJesusCount,
     required this.latestTestimonies,
     required this.loading,
+    required this.summaryLoading,
+    required this.generalSummary,
+    required this.personalSummary,
+    required this.isAuthenticated,
     required this.onSettings,
-    required this.allOutreachStats,
-    required this.outreachStatsLoading,
-    required this.backendApi,
+    this.onAddOutreachStats,
   });
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  bool _showPersonal = false;
 
   @override
   Widget build(BuildContext context) {
@@ -3086,10 +2959,13 @@ class DashboardPage extends StatelessWidget {
   }
 
   Widget _buildApple(BuildContext context) {
+    final tr = widget.tr;
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
-    final latest = latestTestimonies.isEmpty ? null : latestTestimonies.first;
+    final latest = widget.latestTestimonies.isEmpty ? null : widget.latestTestimonies.first;
     final hasLatest = latest != null;
+    final showPersonal = _showPersonal;
+    final summary = showPersonal ? widget.personalSummary : widget.generalSummary;
 
     return ListView(
       padding: const EdgeInsets.only(top: 8, bottom: 110),
@@ -3097,9 +2973,9 @@ class DashboardPage extends StatelessWidget {
         _AppleLargeTitle(
           title: tr.appTitle,
           subtitle: tr.homeWitnessSub,
-          onSettings: onSettings,
+          onSettings: widget.onSettings,
         ),
-        if (loading)
+        if (widget.loading)
           const Padding(
             padding: EdgeInsets.all(48),
             child: Center(child: CupertinoActivityIndicator(radius: 14)),
@@ -3112,13 +2988,11 @@ class DashboardPage extends StatelessWidget {
             author: latest?.author,
             addedByName: latest?.addedByName,
             addedByAvatarUrl: latest?.addedByAvatarUrl,
-            onTap: hasLatest
-                ? () => _openLatestTestimoniesSheet(context)
-                : null,
+            onTap: hasLatest ? () => _openLatestTestimoniesSheet(context) : null,
           ),
           const SizedBox(height: 22),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Text(
               tr.statisticsHeader.toUpperCase(),
               style: TextStyle(
@@ -3129,154 +3003,114 @@ class DashboardPage extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 10),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _AppleStatCard(
-                    icon: CupertinoIcons.person_3_fill,
-                    tint: const Color(0xFF007AFF),
-                    value: _formatBigNumber(heardGospelCount),
-                    label: tr.heardGospelCountLabel,
+            child: CupertinoSlidingSegmentedControl<bool>(
+              groupValue: _showPersonal,
+              children: {
+                false: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Text(tr.generalStats, style: const TextStyle(fontSize: 13)),
+                ),
+                true: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!widget.isAuthenticated) ...[
+                        Icon(CupertinoIcons.lock_fill, size: 11,
+                            color: _showPersonal
+                                ? CupertinoColors.label.resolveFrom(context)
+                                : _iosSecondaryLabel(context)),
+                        const SizedBox(width: 4),
+                      ],
+                      Text(tr.personalStats, style: const TextStyle(fontSize: 13)),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _AppleStatCard(
-                    icon: CupertinoIcons.heart_fill,
-                    tint: const Color(0xFFFF3B30),
-                    value: _formatBigNumber(acceptedJesusCount),
-                    label: tr.acceptedJesusCountLabel,
-                  ),
-                ),
-              ],
+              },
+              onValueChanged: (v) => setState(() => _showPersonal = v ?? false),
             ),
           ),
-          const SizedBox(height: 22),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              tr.outreachStatsHeader.toUpperCase(),
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: _iosSecondaryLabel(context),
-                letterSpacing: 0.4,
-              ),
-            ),
-          ),
-          if (outreachStatsLoading)
+          const SizedBox(height: 14),
+          if (widget.summaryLoading)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CupertinoActivityIndicator(radius: 12)),
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: CupertinoActivityIndicator(radius: 13)),
             )
-          else if (allOutreachStats.isEmpty)
+          else if (showPersonal && widget.personalSummary == null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                 decoration: BoxDecoration(
                   color: _iosCardBackground(context),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Center(
-                  child: Text(
-                    tr.outreachStatsEmpty,
-                    style: TextStyle(
-                      color: _iosSecondaryLabel(context),
-                      fontSize: 15,
+                child: Column(
+                  children: [
+                    Icon(CupertinoIcons.lock_fill, size: 28, color: _iosSecondaryLabel(context)),
+                    const SizedBox(height: 10),
+                    Text(
+                      tr.personalStatsUnavailable,
+                      style: TextStyle(color: _iosSecondaryLabel(context), fontSize: 15),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
+                  ],
                 ),
               ),
             )
-          else
+          else if (summary != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: allOutreachStats
-                    .map(
-                      (entry) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: _iosCardBackground(context),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: _DashboardOutreachRow(
-                            entry: entry,
-                            backendApi: backendApi,
-                            tr: tr,
-                          ),
+              child: _SummaryStatsCard(summary: summary, tr: tr, tint: primary),
+            ),
+          if (widget.onAddOutreachStats != null && !widget.summaryLoading) ...[
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => _openAddSheet(context),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _iosCardBackground(context),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(CupertinoIcons.plus_circle, size: 16, color: primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        tr.addOutreachStats,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: primary,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                    )
-                    .toList(),
+                    ],
+                  ),
+                ),
               ),
             ),
+          ],
         ],
       ],
     );
   }
 
-  static String _formatBigNumber(int n) {
-    if (n >= 1000000) {
-      final v = n / 1000000;
-      return '${v.toStringAsFixed(v >= 10 ? 0 : 1)}M';
-    }
-    if (n >= 10000) {
-      final v = n / 1000;
-      return '${v.toStringAsFixed(v >= 100 ? 0 : 1)}K';
-    }
-    return '$n';
-  }
-
   Widget _buildMaterial(BuildContext context) {
+    final tr = widget.tr;
     final theme = Theme.of(context);
-    final latest = latestTestimonies.isEmpty ? null : latestTestimonies.first;
+    final latest = widget.latestTestimonies.isEmpty ? null : widget.latestTestimonies.first;
     final hasLatest = latest != null;
-    Widget longMetric({
-      required IconData icon,
-      required String value,
-      required String label,
-    }) {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.42),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: theme.colorScheme.primary.withOpacity(0.18),
-          ),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: theme.colorScheme.primary.withOpacity(0.14),
-              child: Icon(icon, size: 18, color: theme.colorScheme.primary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final showPersonal = _showPersonal;
+    final summary = showPersonal ? widget.personalSummary : widget.generalSummary;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -3284,16 +3118,11 @@ class DashboardPage extends StatelessWidget {
         _PageHeader(
           title: tr.appTitle,
           subtitle: tr.homeWitnessSub,
-          onSettings: onSettings,
+          onSettings: widget.onSettings,
         ),
         const SizedBox(height: 16),
-        if (loading)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: CircularProgressIndicator(),
-            ),
-          )
+        if (widget.loading)
+          const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
         else
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3302,9 +3131,7 @@ class DashboardPage extends StatelessWidget {
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(20),
-                  onTap: hasLatest
-                      ? () => _openLatestTestimoniesSheet(context)
-                      : null,
+                  onTap: hasLatest ? () => _openLatestTestimoniesSheet(context) : null,
                   child: Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
@@ -3317,69 +3144,44 @@ class DashboardPage extends StatelessWidget {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      border: Border.all(
-                        color: theme.colorScheme.primary.withOpacity(0.26),
-                      ),
+                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.26)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(
-                              Icons.auto_stories_rounded,
-                              color: theme.colorScheme.primary,
-                            ),
+                            Icon(Icons.auto_stories_rounded, color: theme.colorScheme.primary),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 tr.latestTestimony,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                               ),
                             ),
-                            if (hasLatest)
-                              Icon(
-                                Icons.chevron_right_rounded,
-                                color: theme.colorScheme.primary,
-                              ),
+                            if (hasLatest) Icon(Icons.chevron_right_rounded, color: theme.colorScheme.primary),
                           ],
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          '“${latest?.text ?? tr.noLatestTestimonies}”',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            height: 1.38,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          '”${latest?.text ?? tr.noLatestTestimonies}”',
+                          style: theme.textTheme.bodyLarge?.copyWith(height: 1.38, fontWeight: FontWeight.w500),
                         ),
-                        if ((latest?.addedByName?.isNotEmpty == true) ||
-                            (latest?.author?.isNotEmpty == true)) ...[
+                        if ((latest?.addedByName?.isNotEmpty == true) || (latest?.author?.isNotEmpty == true)) ...[
                           const SizedBox(height: 12),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               CircleAvatar(
                                 radius: 11,
-                                backgroundColor: theme.colorScheme.primary
-                                    .withOpacity(0.15),
-                                child: Icon(
-                                  Icons.person_rounded,
-                                  size: 13,
-                                  color: theme.colorScheme.primary,
-                                ),
+                                backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                                child: Icon(Icons.person_rounded, size: 13, color: theme.colorScheme.primary),
                               ),
                               const SizedBox(width: 8),
                               Flexible(
                                 child: Text(
-                                  (latest!.addedByName?.isNotEmpty == true
-                                      ? latest.addedByName
-                                      : latest.author)!,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
+                                  (latest!.addedByName?.isNotEmpty == true ? latest.addedByName : latest.author)!,
+                                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -3392,149 +3194,475 @@ class DashboardPage extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
-              Column(
-                children: [
-                  longMetric(
-                    icon: Icons.groups_rounded,
-                    value: '$heardGospelCount',
-                    label: tr.heardGospelCountLabel,
-                  ),
-                  const SizedBox(height: 10),
-                  longMetric(
-                    icon: Icons.favorite_rounded,
-                    value: '$acceptedJesusCount',
-                    label: tr.acceptedJesusCountLabel,
+              const SizedBox(height: 22),
+              Text(
+                tr.statisticsHeader,
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<bool>(
+                segments: [
+                  ButtonSegment(value: false, label: Text(tr.generalStats)),
+                  ButtonSegment(
+                    value: true,
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!widget.isAuthenticated) ...[
+                          const Icon(Icons.lock_outline_rounded, size: 13),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(tr.personalStats),
+                      ],
+                    ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Text(
-                    tr.outreachStatsHeader,
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                selected: {_showPersonal},
+                onSelectionChanged: (s) => setState(() => _showPersonal = s.first),
+                style: ButtonStyle(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                ],
+                ),
               ),
-              const SizedBox(height: 10),
-              if (outreachStatsLoading)
-                const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
-              else if (allOutreachStats.isEmpty)
+              const SizedBox(height: 16),
+              if (widget.summaryLoading)
+                const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+              else if (showPersonal && widget.personalSummary == null)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Text(
-                    tr.outreachStatsEmpty,
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    children: [
+                      Icon(Icons.lock_outline_rounded, size: 28, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 8),
+                      Text(
+                        tr.personalStatsUnavailable,
+                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 )
-              else
-                Column(
-                  children: allOutreachStats.map((entry) {
-                    final avatarUrl = entry.userAvatarUrl != null
-                        ? backendApi.resolveUrl(entry.userAvatarUrl!).toString()
-                        : null;
-                    final dateStr = DateFormat('dd.MM.yyyy').format(entry.outreachDate);
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: theme.colorScheme.primary.withOpacity(0.14),
-                                  foregroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                                  child: avatarUrl == null
-                                      ? Text(
-                                          entry.userName.isNotEmpty ? entry.userName[0].toUpperCase() : '?',
-                                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: theme.colorScheme.primary),
-                                        )
-                                      : null,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(entry.userName, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-                                      Text(dateStr, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                _matMiniStat(context, theme, Icons.campaign_rounded, const Color(0xFF34C759), '${entry.gospelsTold}', tr.gospelsTold),
-                                const SizedBox(width: 8),
-                                _matMiniStat(context, theme, Icons.favorite_rounded, const Color(0xFFFF3B30), '${entry.salvationPrayedUnreachable}', tr.salvationPrayedUnreachable),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                _matMiniStat(context, theme, Icons.menu_book_rounded, const Color(0xFFFF9500), '${entry.scripturesDistributed}', tr.scripturesDistributed),
-                                const SizedBox(width: 8),
-                                _matMiniStat(context, theme, Icons.health_and_safety_rounded, const Color(0xFF5856D6), '${entry.healingsDeliverances}', tr.healingsDeliverances),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
+              else if (summary != null)
+                _SummaryStatsCardMaterial(summary: summary, tr: tr, theme: theme),
+              if (widget.onAddOutreachStats != null && !widget.summaryLoading) ...[
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: () => _openAddSheet(context),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: Text(widget.tr.addOutreachStats),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                    foregroundColor: theme.colorScheme.primary,
+                  ),
                 ),
+              ],
             ],
           ),
       ],
     );
   }
 
-  Widget _matMiniStat(BuildContext context, ThemeData theme, IconData icon, Color color, String value, String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.09),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 15, color: color),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color)),
-                  Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-                ],
-              ),
+  void _openAddSheet(BuildContext context) {
+    final onSave = widget.onAddOutreachStats;
+    if (onSave == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _OutreachStatsSheet(
+        tr: widget.tr,
+        existing: null,
+        onSave: ({
+          required int gospelsTold,
+          required int salvationPrayedUnreachable,
+          required int scripturesDistributed,
+          required int healingsDeliverances,
+        }) =>
+            onSave(
+              gospelsTold: gospelsTold,
+              salvationPrayedUnreachable: salvationPrayedUnreachable,
+              scripturesDistributed: scripturesDistributed,
+              healingsDeliverances: healingsDeliverances,
             ),
-          ],
-        ),
       ),
     );
   }
 
   void _openLatestTestimoniesSheet(BuildContext context) {
-    if (latestTestimonies.isEmpty) return;
+    if (widget.latestTestimonies.isEmpty) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => LatestTestimoniesSheet(tr: tr, items: latestTestimonies),
+      builder: (_) => LatestTestimoniesSheet(tr: widget.tr, items: widget.latestTestimonies),
+    );
+  }
+}
+
+// ── iOS Summary Stats Card ───────────────────────────────────────────────────
+
+class _SummaryStatsCard extends StatelessWidget {
+  final SummaryStats summary;
+  final S tr;
+  final Color tint;
+  const _SummaryStatsCard({required this.summary, required this.tr, required this.tint});
+
+  static String _fmt(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 10000) return '${(n / 1000).toStringAsFixed(0)}K';
+    return '$n';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    return Column(
+      children: [
+        // ── Hero stat: total heard gospel ──────────────────────────────────
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                tint,
+                tint.withOpacity(0.72),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.22),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(CupertinoIcons.person_3_fill, size: 18, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      tr.totalHeardGospel,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _fmt(summary.totalHeardGospel),
+                style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // ── Contact breakdown row ──────────────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: CupertinoIcons.phone_arrow_down_left,
+                color: const Color(0xFFFF9500),
+                value: _fmt(summary.heardGospelNoContact),
+                label: tr.heardGospelNoContact,
+                isDark: isDark,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: CupertinoIcons.phone_fill,
+                color: const Color(0xFF34C759),
+                value: _fmt(summary.heardGospelHasContact),
+                label: tr.heardGospelHasContact,
+                isDark: isDark,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // ── Scriptures + Healings row ──────────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: CupertinoIcons.book_fill,
+                color: const Color(0xFFFF3B30),
+                value: _fmt(summary.scripturesDistributed),
+                label: tr.scripturesDistributed,
+                isDark: isDark,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: CupertinoIcons.waveform_path_ecg,
+                color: const Color(0xFF5856D6),
+                value: _fmt(summary.healingsDeliverances),
+                label: tr.healingsDeliverances,
+                isDark: isDark,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _miniCard(
+    BuildContext context, {
+    required IconData icon,
+    required Color color,
+    required String value,
+    required String label,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        color: _iosCardBackground(context),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: color,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: _iosSecondaryLabel(context),
+              height: 1.3,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Material Summary Stats Card ──────────────────────────────────────────────
+
+class _SummaryStatsCardMaterial extends StatelessWidget {
+  final SummaryStats summary;
+  final S tr;
+  final ThemeData theme;
+  const _SummaryStatsCardMaterial({required this.summary, required this.tr, required this.theme});
+
+  static String _fmt(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 10000) return '${(n / 1000).toStringAsFixed(0)}K';
+    return '$n';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = theme.colorScheme.primary;
+    return Column(
+      children: [
+        // ── Hero stat ─────────────────────────────────────────────────────
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [primary, primary.withOpacity(0.74)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.20),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.groups_rounded, size: 20, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      tr.totalHeardGospel,
+                      style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _fmt(summary.totalHeardGospel),
+                style: const TextStyle(
+                  fontSize: 52,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // ── Contact breakdown ─────────────────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: Icons.phone_missed_rounded,
+                color: const Color(0xFFFF9500),
+                value: _fmt(summary.heardGospelNoContact),
+                label: tr.heardGospelNoContact,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: Icons.phone_in_talk_rounded,
+                color: const Color(0xFF34C759),
+                value: _fmt(summary.heardGospelHasContact),
+                label: tr.heardGospelHasContact,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // ── Scriptures + Healings ─────────────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: Icons.menu_book_rounded,
+                color: const Color(0xFFFF3B30),
+                value: _fmt(summary.scripturesDistributed),
+                label: tr.scripturesDistributed,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: Icons.health_and_safety_rounded,
+                color: const Color(0xFF5856D6),
+                value: _fmt(summary.healingsDeliverances),
+                label: tr.healingsDeliverances,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _miniCard(
+    BuildContext context, {
+    required IconData icon,
+    required Color color,
+    required String value,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.50),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: color,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.3,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -5329,20 +5457,17 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
   final OutreachStatEntry entry;
   final S tr;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onReset;
 
   const _ProfileOutreachEntryCard({
     required this.entry,
     required this.tr,
     required this.onEdit,
-    required this.onDelete,
+    required this.onReset,
   });
 
   @override
   Widget build(BuildContext context) {
-    final secondary = _iosSecondaryLabel(context);
-    final dateStr = DateFormat('dd.MM.yyyy').format(entry.outreachDate);
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
@@ -5357,19 +5482,9 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
               child: Row(
                 children: [
-                  Icon(
-                    CupertinoIcons.calendar,
-                    size: 15,
-                    color: secondary,
-                  ),
-                  const SizedBox(width: 6),
                   Text(
-                    dateStr,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: secondary,
-                    ),
+                    tr.outreachStatsHeader,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
                   CupertinoButton(
@@ -5386,9 +5501,9 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
                   CupertinoButton(
                     padding: EdgeInsets.zero,
                     minimumSize: Size.zero,
-                    onPressed: onDelete,
+                    onPressed: onReset,
                     child: Icon(
-                      CupertinoIcons.trash,
+                      CupertinoIcons.arrow_counterclockwise,
                       size: 18,
                       color: CupertinoColors.destructiveRed.resolveFrom(context),
                     ),
@@ -5465,17 +5580,23 @@ class ProfilePage extends StatelessWidget {
   final Future<void> Function() onEditAccount;
   final Future<void> Function() onLogout;
   final VoidCallback onSettings;
-  final List<OutreachStatEntry> myOutreachStats;
+  final OutreachStatEntry? myStats;
+  final bool myStatsLoading;
   final Future<void> Function({
-    int? statisticsId,
-    required String outreachDate,
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
     required int healingsDeliverances,
   })
-  onSaveOutreachStats;
-  final Future<void> Function(int statisticsId) onDeleteOutreachStats;
+  onAddOutreachStats;
+  final Future<void> Function({
+    required int gospelsTold,
+    required int salvationPrayedUnreachable,
+    required int scripturesDistributed,
+    required int healingsDeliverances,
+  })
+  onEditOutreachStats;
+  final Future<void> Function() onResetOutreachStats;
 
   const ProfilePage({
     super.key,
@@ -5489,9 +5610,11 @@ class ProfilePage extends StatelessWidget {
     required this.onEditAccount,
     required this.onLogout,
     required this.onSettings,
-    required this.myOutreachStats,
-    required this.onSaveOutreachStats,
-    required this.onDeleteOutreachStats,
+    required this.myStats,
+    required this.myStatsLoading,
+    required this.onAddOutreachStats,
+    required this.onEditOutreachStats,
+    required this.onResetOutreachStats,
   });
 
   Future<void> _confirmLogout(BuildContext context) async {
@@ -5537,10 +5660,7 @@ class ProfilePage extends StatelessWidget {
     if (shouldLogout == true) await onLogout();
   }
 
-  void _openOutreachStatsSheet(
-    BuildContext context, {
-    OutreachStatEntry? existing,
-  }) {
+  void _openAddOutreachStatsSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -5548,16 +5668,13 @@ class ProfilePage extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => _OutreachStatsSheet(
         tr: tr,
-        existing: existing,
+        existing: null,
         onSave: ({
-          required String outreachDate,
           required int gospelsTold,
           required int salvationPrayedUnreachable,
           required int scripturesDistributed,
           required int healingsDeliverances,
-        }) => onSaveOutreachStats(
-          statisticsId: existing?.id,
-          outreachDate: outreachDate,
+        }) => onAddOutreachStats(
           gospelsTold: gospelsTold,
           salvationPrayedUnreachable: salvationPrayedUnreachable,
           scripturesDistributed: scripturesDistributed,
@@ -5567,17 +5684,38 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmDeleteEntry(
-    BuildContext context,
-    OutreachStatEntry entry,
-  ) async {
+  void _openEditOutreachStatsSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _OutreachStatsSheet(
+        tr: tr,
+        existing: myStats,
+        onSave: ({
+          required int gospelsTold,
+          required int salvationPrayedUnreachable,
+          required int scripturesDistributed,
+          required int healingsDeliverances,
+        }) => onEditOutreachStats(
+          gospelsTold: gospelsTold,
+          salvationPrayedUnreachable: salvationPrayedUnreachable,
+          scripturesDistributed: scripturesDistributed,
+          healingsDeliverances: healingsDeliverances,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmResetStats(BuildContext context) async {
     bool? confirmed;
     if (_isApple) {
       confirmed = await showCupertinoDialog<bool>(
         context: context,
         builder: (_) => CupertinoAlertDialog(
-          title: Text(tr.deleteEntryTitle),
-          content: Text(tr.deleteEntryBody),
+          title: Text(tr.resetStatsTitle),
+          content: Text(tr.resetStatsBody),
           actions: [
             CupertinoDialogAction(
               onPressed: () => Navigator.of(context).pop(false),
@@ -5586,7 +5724,7 @@ class ProfilePage extends StatelessWidget {
             CupertinoDialogAction(
               isDestructiveAction: true,
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(tr.deleteEntry),
+              child: Text(tr.resetStats),
             ),
           ],
         ),
@@ -5595,8 +5733,8 @@ class ProfilePage extends StatelessWidget {
       confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: Text(tr.deleteEntryTitle),
-          content: Text(tr.deleteEntryBody),
+          title: Text(tr.resetStatsTitle),
+          content: Text(tr.resetStatsBody),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -5604,13 +5742,13 @@ class ProfilePage extends StatelessWidget {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(tr.deleteEntry),
+              child: Text(tr.resetStats),
             ),
           ],
         ),
       );
     }
-    if (confirmed == true) await onDeleteOutreachStats(entry.id);
+    if (confirmed == true) await onResetOutreachStats();
   }
 
   @override
@@ -5745,9 +5883,9 @@ class ProfilePage extends StatelessWidget {
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 minimumSize: Size.zero,
-                onPressed: () => _openOutreachStatsSheet(context),
+                onPressed: () => _openAddOutreachStatsSheet(context),
                 child: Text(
-                  tr.addNewEntry,
+                  tr.addOutreachStats,
                   style: TextStyle(
                     fontSize: 14,
                     color: primary,
@@ -5760,17 +5898,21 @@ class ProfilePage extends StatelessWidget {
         ),
       );
 
-      if (myOutreachStats.isEmpty) {
+      if (myStatsLoading) {
+        children.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CupertinoActivityIndicator(radius: 12)),
+          ),
+        );
+      } else if (myStats == null) {
         children.add(
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: GestureDetector(
-              onTap: () => _openOutreachStatsSheet(context),
+              onTap: () => _openAddOutreachStatsSheet(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 20,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                 decoration: BoxDecoration(
                   color: _iosCardBackground(context),
                   borderRadius: BorderRadius.circular(12),
@@ -5778,19 +5920,9 @@ class ProfilePage extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      CupertinoIcons.chart_bar_alt_fill,
-                      size: 20,
-                      color: _iosSecondaryLabel(context),
-                    ),
+                    Icon(CupertinoIcons.chart_bar_alt_fill, size: 20, color: _iosSecondaryLabel(context)),
                     const SizedBox(width: 10),
-                    Text(
-                      tr.noStatsYet,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: _iosSecondaryLabel(context),
-                      ),
-                    ),
+                    Text(tr.noStatsYet, style: TextStyle(fontSize: 15, color: _iosSecondaryLabel(context))),
                   ],
                 ),
               ),
@@ -5798,17 +5930,15 @@ class ProfilePage extends StatelessWidget {
           ),
         );
       } else {
-        for (final entry in myOutreachStats) {
-          children.add(
-            _ProfileOutreachEntryCard(
-              entry: entry,
-              tr: tr,
-              onEdit: () => _openOutreachStatsSheet(context, existing: entry),
-              onDelete: () => _confirmDeleteEntry(context, entry),
-            ),
-          );
-          children.add(const SizedBox(height: 10));
-        }
+        children.add(
+          _ProfileOutreachEntryCard(
+            entry: myStats!,
+            tr: tr,
+            onEdit: () => _openEditOutreachStatsSheet(context),
+            onReset: () => _confirmResetStats(context),
+          ),
+        );
+        children.add(const SizedBox(height: 10));
       }
 
       children.add(const SizedBox(height: 22));
@@ -6080,120 +6210,84 @@ class ProfilePage extends StatelessWidget {
             children: [
               Text(
                 tr.outreachStatsHeader,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const Spacer(),
               TextButton.icon(
-                onPressed: () => _openOutreachStatsSheet(context),
+                onPressed: () => _openAddOutreachStatsSheet(context),
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(tr.addNewEntry),
+                label: Text(tr.addOutreachStats),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          if (myOutreachStats.isEmpty)
+          if (myStatsLoading)
+            const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+          else if (myStats == null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(
-                  0.35,
-                ),
+                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 tr.noStatsYet,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
             )
           else
-            ...myOutreachStats.map((entry) {
-              final dateStr = DateFormat('dd.MM.yyyy').format(entry.outreachDate);
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today_rounded,
-                            size: 14,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            dateStr,
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            tooltip: tr.editOutreachStats,
-                            icon: const Icon(Icons.edit_rounded, size: 18),
-                            onPressed: () =>
-                                _openOutreachStatsSheet(context, existing: entry),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                          ),
-                          IconButton(
-                            tooltip: tr.deleteEntry,
-                            icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                            onPressed: () => _confirmDeleteEntry(context, entry),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          _matStatChip(
-                            context,
-                            Icons.campaign_rounded,
-                            '${entry.gospelsTold}',
-                            tr.gospelsTold,
-                          ),
-                          const SizedBox(width: 8),
-                          _matStatChip(
-                            context,
-                            Icons.favorite_rounded,
-                            '${entry.salvationPrayedUnreachable}',
-                            tr.salvationPrayedUnreachable,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _matStatChip(
-                            context,
-                            Icons.menu_book_rounded,
-                            '${entry.scripturesDistributed}',
-                            tr.scripturesDistributed,
-                          ),
-                          const SizedBox(width: 8),
-                          _matStatChip(
-                            context,
-                            Icons.health_and_safety_rounded,
-                            '${entry.healingsDeliverances}',
-                            tr.healingsDeliverances,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          tr.outreachStatsHeader,
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: tr.editOutreachStats,
+                          icon: const Icon(Icons.edit_rounded, size: 18),
+                          onPressed: () => _openEditOutreachStatsSheet(context),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                        ),
+                        IconButton(
+                          tooltip: tr.resetStats,
+                          icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                          onPressed: () => _confirmResetStats(context),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _matStatChip(context, Icons.campaign_rounded, '${myStats!.gospelsTold}', tr.gospelsTold),
+                        const SizedBox(width: 8),
+                        _matStatChip(context, Icons.favorite_rounded, '${myStats!.salvationPrayedUnreachable}', tr.salvationPrayedUnreachable),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _matStatChip(context, Icons.menu_book_rounded, '${myStats!.scripturesDistributed}', tr.scripturesDistributed),
+                        const SizedBox(width: 8),
+                        _matStatChip(context, Icons.health_and_safety_rounded, '${myStats!.healingsDeliverances}', tr.healingsDeliverances),
+                      ],
+                    ),
+                  ],
                 ),
-              );
-            }),
+              ),
+            ),
         ],
       ],
     );
@@ -9687,16 +9781,15 @@ class S {
   // Outreach statistics
   String get outreachStatsHeader =>
       _ru ? 'Статистика аутрича' : 'Outreach stats';
-  String get outreachStatsAll => _ru ? 'Все пользователи' : 'All users';
   String get gospelsTold => _ru ? 'Поделились Евангелием' : 'Gospels told';
   String get salvationPrayedUnreachable =>
       _ru ? 'Помолились, не вышли на связь' : 'Prayed, unreachable';
   String get scripturesDistributed =>
-      _ru ? 'Роздано Писаний' : 'Scriptures distributed';
+      _ru ? 'Роздано Евангелий от Иоана' : 'Gospels of John distributed';
   String get healingsDeliverances =>
       _ru ? 'Исцелений / освобождений' : 'Healings & deliverances';
   String get addOutreachStats =>
-      _ru ? 'Добавить статистику' : 'Add outreach stats';
+      _ru ? 'Добавить аутрич' : 'Add outreach';
   String get editOutreachStats => _ru ? 'Редактировать' : 'Edit';
   String get outreachStatsEmpty =>
       _ru ? 'Нет статистики аутрича' : 'No outreach stats yet';
@@ -9704,12 +9797,22 @@ class S {
   String get outreachStatsError =>
       _ru ? 'Не удалось сохранить' : 'Could not save stats';
   String get noStatsYet =>
-      _ru ? 'Вы ещё не добавили статистику' : 'You haven\'t added stats yet';
-  String get outreachDate => _ru ? 'Дата аутрича' : 'Outreach date';
-  String get addNewEntry => _ru ? 'Новая запись' : 'New entry';
-  String get deleteEntry => _ru ? 'Удалить' : 'Delete';
-  String get deleteEntryTitle =>
-      _ru ? 'Удалить запись?' : 'Delete entry?';
-  String get deleteEntryBody =>
-      _ru ? 'Это действие нельзя отменить.' : 'This cannot be undone.';
+      _ru ? 'Нет данных аутрича' : 'No outreach data yet';
+  String get resetStats => _ru ? 'Сбросить' : 'Reset';
+  String get resetStatsTitle => _ru ? 'Сбросить статистику?' : 'Reset stats?';
+  String get resetStatsBody => _ru
+      ? 'Все счётчики будут обнулены. Это действие нельзя отменить.'
+      : 'All counters will be set to zero. This cannot be undone.';
+  // Summary stats labels
+  String get generalStats => _ru ? 'Общая' : 'General';
+  String get personalStats => _ru ? 'Личная' : 'Personal';
+  String get totalHeardGospel =>
+      _ru ? 'Всего услышали евангелие' : 'Total heard the Gospel';
+  String get heardGospelNoContact =>
+      _ru ? 'Услышали, нет контакта' : 'Heard, no contact';
+  String get heardGospelHasContact =>
+      _ru ? 'Услышали, есть контакт' : 'Heard, has contact';
+  String get personalStatsUnavailable => _ru
+      ? 'Войдите в аккаунт, чтобы видеть личную статистику'
+      : 'Sign in to view personal statistics';
 }
