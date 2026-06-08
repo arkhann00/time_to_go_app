@@ -1467,7 +1467,7 @@ class _TimeToGoAppState extends State<TimeToGoApp> {
   static const _tokenKey = 'api_access_token_v1';
   static const _apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://api.time-to-go.com',
+    defaultValue: 'http://api.time.to.go.xn--80a6ad.space',
   );
   static const _apiAccessToken = String.fromEnvironment('API_ACCESS_TOKEN');
 
