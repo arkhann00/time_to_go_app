@@ -10650,11 +10650,11 @@ class S {
   String get profileSub =>
       _ru ? 'Информация о вас и вашем служении' : 'About you and your ministry';
   String get profileNeedAuth => _ru
-      ? 'Войдите, чтобы открыть профиль аккаунта'
-      : 'Sign in to open account profile';
+      ? 'Войдите, чтобы открыть профиль'
+      : 'Sign in to view your profile';
   String get profileNeedAuthSub => _ru
-      ? 'После входа здесь будет ваш профиль из бэкенда.'
-      : 'After sign in, your backend account profile will appear here.';
+      ? 'После входа здесь появится ваш профиль и статистика.'
+      : 'After sign in your profile and statistics will appear here.';
   String get editAccountProfile =>
       _ru ? 'Редактировать аккаунт' : 'Edit account profile';
   String get changeAvatar => _ru ? 'Изменить фото' : 'Change photo';
@@ -10669,8 +10669,8 @@ class S {
   String get about => _ru ? 'О себе' : 'About';
   String get serverAccount => _ru ? 'Профиль аккаунта' : 'Account profile';
   String get serverAccountUnavailable => _ru
-      ? 'Не удалось загрузить профиль аккаунта с сервера.'
-      : 'Could not load account profile from server.';
+      ? 'Не удалось загрузить профиль. Проверьте соединение.'
+      : 'Could not load profile. Check your connection.';
   String get accountInfo => _ru ? 'Данные аккаунта' : 'Account info';
   String get noProfile => _ru ? 'Профиль не заполнен' : 'Profile is empty';
   String get noProfileSub => _ru
