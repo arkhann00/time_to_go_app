@@ -18,7 +18,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'backend_api.dart';
 import 'user_profile_cache.dart';
 
-bool get _isApple => kIsWeb || Platform.isIOS || Platform.isMacOS || Platform.isAndroid;
+bool get _isApple =>
+    kIsWeb || Platform.isIOS || Platform.isMacOS || Platform.isAndroid;
 
 ImageProvider? _profileAvatarImage(String? localPath, String? networkUrl) {
   if (!kIsWeb &&
@@ -169,7 +170,8 @@ class OutreachStatEntry {
       scripturesDistributed:
           (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
       healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
-      testimonies: (m['testimonies'] as List<dynamic>?)
+      testimonies:
+          (m['testimonies'] as List<dynamic>?)
               ?.whereType<String>()
               .where((t) => t.trim().isNotEmpty)
               .toList() ??
@@ -201,14 +203,11 @@ class SummaryStats {
 
   factory SummaryStats.fromMap(Map<String, dynamic> m) => SummaryStats(
     totalHeardGospel: (m['total_heard_gospel'] as num?)?.toInt() ?? 0,
-    heardGospelNoContact:
-        (m['heard_gospel_no_contact'] as num?)?.toInt() ?? 0,
+    heardGospelNoContact: (m['heard_gospel_no_contact'] as num?)?.toInt() ?? 0,
     heardGospelHasContact:
         (m['heard_gospel_has_contact'] as num?)?.toInt() ?? 0,
-    scripturesDistributed:
-        (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
-    healingsDeliverances:
-        (m['healings_deliverances'] as num?)?.toInt() ?? 0,
+    scripturesDistributed: (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
+    healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
   );
 }
 
@@ -767,11 +766,13 @@ class _AppleTestimonyHero extends StatelessWidget {
                           CircleAvatar(
                             radius: 13,
                             backgroundColor: tint.withOpacity(0.15),
-                            foregroundImage: addedByAvatarUrl != null &&
+                            foregroundImage:
+                                addedByAvatarUrl != null &&
                                     addedByAvatarUrl!.isNotEmpty
                                 ? NetworkImage(addedByAvatarUrl!)
                                 : null,
-                            child: (addedByAvatarUrl == null ||
+                            child:
+                                (addedByAvatarUrl == null ||
                                     addedByAvatarUrl!.isEmpty)
                                 ? Icon(
                                     CupertinoIcons.person_fill,
@@ -1037,6 +1038,7 @@ class _AppleStatCard extends StatelessWidget {
 
 class _OutreachStatsSheet extends StatefulWidget {
   final S tr;
+
   /// When non-null, the form is pre-filled for editing (direct set via PATCH).
   /// When null, the form is empty for adding (accumulate via POST /add).
   final OutreachStatEntry? existing;
@@ -1145,129 +1147,120 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
                 }
               },
               child: Container(
-                  margin: const EdgeInsets.only(top: 8, bottom: 4),
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: _iosSeparator(context),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                margin: const EdgeInsets.only(top: 8, bottom: 4),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _iosSeparator(context),
+                  borderRadius: BorderRadius.circular(2),
                 ),
+              ),
             ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      isEdit ? tr.editOutreachStats : tr.addOutreachStats,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  child: Row(
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const CupertinoActivityIndicator()
+                        : Text(
+                            tr.save,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 0.5, color: _iosSeparator(context)),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(0, 12, 0, viewInsets.bottom + 20),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: Text(
-                          isEdit ? tr.editOutreachStats : tr.addOutreachStats,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
+                      _AppleSection(
+                        children: [
+                          _AppleInputRow(
+                            icon: CupertinoIcons.smiley,
+                            iconBackground: const Color(0xFF34C759),
+                            placeholder: tr.gospelsTold,
+                            controller: _gospels,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _AppleInputRow(
+                            icon: CupertinoIcons.heart,
+                            iconBackground: const Color(0xFFFF3B30),
+                            placeholder: tr.salvationPrayedUnreachable,
+                            controller: _salvation,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _AppleInputRow(
+                            icon: CupertinoIcons.book,
+                            iconBackground: const Color(0xFFFF9500),
+                            placeholder: tr.scripturesDistributed,
+                            controller: _scriptures,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _AppleInputRow(
+                            icon: CupertinoIcons.waveform_path_ecg,
+                            iconBackground: const Color(0xFF5856D6),
+                            placeholder: tr.healingsDeliverances,
+                            controller: _healings,
+                            keyboardType: TextInputType.number,
+                          ),
+                        ],
+                      ),
+                      if (!isEdit) ...[
+                        const SizedBox(height: 20),
+                        _AppleSection(
+                          header: tr.testimonyLabel,
+                          children: [
+                            _AppleInputRow(
+                              icon: CupertinoIcons.quote_bubble,
+                              iconBackground: const Color(0xFF007AFF),
+                              placeholder: tr.testimonyPlaceholder,
+                              controller: _testimony,
+                              minLines: 3,
+                              maxLines: 6,
+                              textCapitalization: TextCapitalization.sentences,
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(
+                              color: CupertinoColors.destructiveRed.resolveFrom(
+                                context,
+                              ),
+                              fontSize: 13,
+                            ),
                           ),
                         ),
-                      ),
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: _saving ? null : _save,
-                        child: _saving
-                            ? const CupertinoActivityIndicator()
-                            : Text(
-                                tr.save,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      ),
                     ],
                   ),
                 ),
-                Divider(height: 0.5, color: _iosSeparator(context)),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(
-                      0,
-                      12,
-                      0,
-                      viewInsets.bottom + 20,
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _AppleSection(
-                            children: [
-                              _AppleInputRow(
-                                icon: CupertinoIcons.smiley,
-                                iconBackground: const Color(0xFF34C759),
-                                placeholder: tr.gospelsTold,
-                                controller: _gospels,
-                                keyboardType: TextInputType.number,
-                              ),
-                              _AppleInputRow(
-                                icon: CupertinoIcons.heart,
-                                iconBackground: const Color(0xFFFF3B30),
-                                placeholder: tr.salvationPrayedUnreachable,
-                                controller: _salvation,
-                                keyboardType: TextInputType.number,
-                              ),
-                              _AppleInputRow(
-                                icon: CupertinoIcons.book,
-                                iconBackground: const Color(0xFFFF9500),
-                                placeholder: tr.scripturesDistributed,
-                                controller: _scriptures,
-                                keyboardType: TextInputType.number,
-                              ),
-                              _AppleInputRow(
-                                icon: CupertinoIcons.waveform_path_ecg,
-                                iconBackground: const Color(0xFF5856D6),
-                                placeholder: tr.healingsDeliverances,
-                                controller: _healings,
-                                keyboardType: TextInputType.number,
-                              ),
-                            ],
-                          ),
-                          if (!isEdit) ...[
-                            const SizedBox(height: 20),
-                            _AppleSection(
-                              header: tr.testimonyLabel,
-                              children: [
-                                _AppleInputRow(
-                                  icon: CupertinoIcons.quote_bubble,
-                                  iconBackground: const Color(0xFF007AFF),
-                                  placeholder: tr.testimonyPlaceholder,
-                                  controller: _testimony,
-                                  minLines: 3,
-                                  maxLines: 6,
-                                  textCapitalization: TextCapitalization.sentences,
-                                ),
-                              ],
-                            ),
-                          ],
-                          if (_error != null)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                              child: Text(
-                                _error!,
-                                style: TextStyle(
-                                  color: CupertinoColors.destructiveRed
-                                      .resolveFrom(context),
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2391,7 +2384,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text.isEmpty) return null;
     final ownerMap = raw['owner'] as Map<String, dynamic>?;
     final addedByName = (ownerMap?['name'] as String? ?? '').trim();
-    final addedByAvatarUrl = _resolveAvatarUrl(ownerMap?['avatar_url'] as String?);
+    final addedByAvatarUrl = _resolveAvatarUrl(
+      ownerMap?['avatar_url'] as String?,
+    );
     final believerName = (raw['believer_name'] as String? ?? '').trim();
     final metAt = (raw['met_at'] as String? ?? '').trim();
     final createdAt = DateTime.tryParse(metAt) ?? DateTime.now();
@@ -2750,7 +2745,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final current = List<String>.from(_myStats?.testimonies ?? []);
     if (index < 0 || index >= current.length) return;
     current[index] = newText.trim();
-    final result = await _backendApi.patchOutreachStatisticsMe(testimonies: current);
+    final result = await _backendApi.patchOutreachStatisticsMe(
+      testimonies: current,
+    );
     if (mounted) setState(() => _myStats = OutreachStatEntry.fromMap(result));
   }
 
@@ -2758,7 +2755,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final current = List<String>.from(_myStats?.testimonies ?? []);
     if (index < 0 || index >= current.length) return;
     current.removeAt(index);
-    final result = await _backendApi.patchOutreachStatisticsMe(testimonies: current);
+    final result = await _backendApi.patchOutreachStatisticsMe(
+      testimonies: current,
+    );
     if (mounted) setState(() => _myStats = OutreachStatEntry.fromMap(result));
   }
 
@@ -2817,33 +2816,39 @@ class _HomeScreenState extends State<HomeScreen> {
         myStatsLoading: _myStatsLoading,
         onOpenAuth: widget.onOpenAuth,
         onEditAccount: _editAccountProfile,
-        onAddOutreachStats: ({
-          required int gospelsTold,
-          required int salvationPrayedUnreachable,
-          required int scripturesDistributed,
-          required int healingsDeliverances,
-          String? testimony,
-        }) => _addOutreachStats(
-          gospelsTold: gospelsTold,
-          salvationPrayedUnreachable: salvationPrayedUnreachable,
-          scripturesDistributed: scripturesDistributed,
-          healingsDeliverances: healingsDeliverances,
-          testimony: testimony,
-        ),
-        onEditOutreachStats: ({
-          required int gospelsTold,
-          required int salvationPrayedUnreachable,
-          required int scripturesDistributed,
-          required int healingsDeliverances,
-        }) => _editOutreachStats(
-          gospelsTold: gospelsTold,
-          salvationPrayedUnreachable: salvationPrayedUnreachable,
-          scripturesDistributed: scripturesDistributed,
-          healingsDeliverances: healingsDeliverances,
-        ),
+        onAddOutreachStats:
+            ({
+              required int gospelsTold,
+              required int salvationPrayedUnreachable,
+              required int scripturesDistributed,
+              required int healingsDeliverances,
+              String? testimony,
+            }) => _addOutreachStats(
+              gospelsTold: gospelsTold,
+              salvationPrayedUnreachable: salvationPrayedUnreachable,
+              scripturesDistributed: scripturesDistributed,
+              healingsDeliverances: healingsDeliverances,
+              testimony: testimony,
+            ),
+        onEditOutreachStats:
+            ({
+              required int gospelsTold,
+              required int salvationPrayedUnreachable,
+              required int scripturesDistributed,
+              required int healingsDeliverances,
+            }) => _editOutreachStats(
+              gospelsTold: gospelsTold,
+              salvationPrayedUnreachable: salvationPrayedUnreachable,
+              scripturesDistributed: scripturesDistributed,
+              healingsDeliverances: healingsDeliverances,
+            ),
         onResetOutreachStats: _resetOutreachStats,
-        onEditTestimony: widget.isAuthenticated ? _updateOutreachTestimony : null,
-        onDeleteTestimony: widget.isAuthenticated ? _deleteOutreachTestimony : null,
+        onEditTestimony: widget.isAuthenticated
+            ? _updateOutreachTestimony
+            : null,
+        onDeleteTestimony: widget.isAuthenticated
+            ? _deleteOutreachTestimony
+            : null,
         onLogout: widget.onLogout,
         onSettings: _openSettings,
         onRefresh: _load,
@@ -2970,7 +2975,8 @@ class DashboardPage extends StatefulWidget {
     required int scripturesDistributed,
     required int healingsDeliverances,
     String? testimony,
-  })? onAddOutreachStats;
+  })?
+  onAddOutreachStats;
 
   const DashboardPage({
     super.key,
@@ -3003,148 +3009,189 @@ class _DashboardPageState extends State<DashboardPage> {
     final tr = widget.tr;
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
-    final latest = widget.latestTestimonies.isEmpty ? null : widget.latestTestimonies.first;
+    final latest = widget.latestTestimonies.isEmpty
+        ? null
+        : widget.latestTestimonies.first;
     final hasLatest = latest != null;
     final showPersonal = _showPersonal;
-    final summary = showPersonal ? widget.personalSummary : widget.generalSummary;
+    final summary = showPersonal
+        ? widget.personalSummary
+        : widget.generalSummary;
 
     return RefreshIndicator.adaptive(
       onRefresh: widget.onRefresh,
       child: ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(top: 8, bottom: 110),
-      children: [
-        _AppleLargeTitle(
-          title: tr.appTitle,
-          subtitle: tr.homeWitnessSub,
-          onSettings: widget.onSettings,
-        ),
-        if (widget.loading)
-          const Padding(
-            padding: EdgeInsets.all(48),
-            child: Center(child: CupertinoActivityIndicator(radius: 14)),
-          )
-        else ...[
-          _AppleTestimonyHero(
-            tint: primary,
-            label: tr.latestTestimony,
-            text: latest?.text ?? tr.noLatestTestimonies,
-            author: latest?.author,
-            addedByName: latest?.addedByName,
-            addedByAvatarUrl: latest?.addedByAvatarUrl,
-            onTap: hasLatest ? () => _openLatestTestimoniesSheet(context) : null,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 8, bottom: 110),
+        children: [
+          _AppleLargeTitle(
+            title: tr.appTitle,
+            subtitle: tr.homeWitnessSub,
+            onSettings: widget.onSettings,
           ),
-          const SizedBox(height: 22),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: Text(
-              tr.statisticsHeader.toUpperCase(),
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: _iosSecondaryLabel(context),
-                letterSpacing: 0.4,
+          if (widget.loading)
+            const Padding(
+              padding: EdgeInsets.all(48),
+              child: Center(child: CupertinoActivityIndicator(radius: 14)),
+            )
+          else ...[
+            _AppleTestimonyHero(
+              tint: primary,
+              label: tr.latestTestimony,
+              text: latest?.text ?? tr.noLatestTestimonies,
+              author: latest?.author,
+              addedByName: latest?.addedByName,
+              addedByAvatarUrl: latest?.addedByAvatarUrl,
+              onTap: hasLatest
+                  ? () => _openLatestTestimoniesSheet(context)
+                  : null,
+            ),
+            const SizedBox(height: 22),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: Text(
+                tr.statisticsHeader.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _iosSecondaryLabel(context),
+                  letterSpacing: 0.4,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: CupertinoSlidingSegmentedControl<bool>(
-              groupValue: _showPersonal,
-              children: {
-                false: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: Text(tr.generalStats, style: const TextStyle(fontSize: 13)),
-                ),
-                true: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (!widget.isAuthenticated) ...[
-                        Icon(CupertinoIcons.lock_fill, size: 11,
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: CupertinoSlidingSegmentedControl<bool>(
+                groupValue: _showPersonal,
+                children: {
+                  false: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      tr.generalStats,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  true: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!widget.isAuthenticated) ...[
+                          Icon(
+                            CupertinoIcons.lock_fill,
+                            size: 11,
                             color: _showPersonal
                                 ? CupertinoColors.label.resolveFrom(context)
-                                : _iosSecondaryLabel(context)),
-                        const SizedBox(width: 4),
+                                : _iosSecondaryLabel(context),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          tr.personalStats,
+                          style: const TextStyle(fontSize: 13),
+                        ),
                       ],
-                      Text(tr.personalStats, style: const TextStyle(fontSize: 13)),
-                    ],
-                  ),
-                ),
-              },
-              onValueChanged: (v) => setState(() => _showPersonal = v ?? false),
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (widget.summaryLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 32),
-              child: Center(child: CupertinoActivityIndicator(radius: 13)),
-            )
-          else if (showPersonal && widget.personalSummary == null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                decoration: BoxDecoration(
-                  color: _iosCardBackground(context),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  children: [
-                    Icon(CupertinoIcons.lock_fill, size: 28, color: _iosSecondaryLabel(context)),
-                    const SizedBox(height: 10),
-                    Text(
-                      tr.personalStatsUnavailable,
-                      style: TextStyle(color: _iosSecondaryLabel(context), fontSize: 15),
-                      textAlign: TextAlign.center,
                     ),
-                  ],
-                ),
+                  ),
+                },
+                onValueChanged: (v) =>
+                    setState(() => _showPersonal = v ?? false),
               ),
-            )
-          else if (summary != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _SummaryStatsCard(summary: summary, tr: tr, tint: primary),
             ),
-          if (widget.onAddOutreachStats != null && !widget.summaryLoading) ...[
             const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => _openAddSheet(context),
+            if (widget.summaryLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: Center(child: CupertinoActivityIndicator(radius: 13)),
+              )
+            else if (showPersonal && widget.personalSummary == null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 24,
+                  ),
                   decoration: BoxDecoration(
                     color: _iosCardBackground(context),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Column(
                     children: [
-                      Icon(CupertinoIcons.plus_circle, size: 16, color: primary),
-                      const SizedBox(width: 6),
+                      Icon(
+                        CupertinoIcons.lock_fill,
+                        size: 28,
+                        color: _iosSecondaryLabel(context),
+                      ),
+                      const SizedBox(height: 10),
                       Text(
-                        tr.addOutreachStats,
+                        tr.personalStatsUnavailable,
                         style: TextStyle(
-                          fontSize: 14,
-                          color: primary,
-                          fontWeight: FontWeight.w500,
+                          color: _iosSecondaryLabel(context),
+                          fontSize: 15,
                         ),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
                 ),
+              )
+            else if (summary != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _SummaryStatsCard(
+                  summary: summary,
+                  tr: tr,
+                  tint: primary,
+                ),
               ),
-            ),
+            if (widget.onAddOutreachStats != null &&
+                !widget.summaryLoading) ...[
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _openAddSheet(context),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _iosCardBackground(context),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          CupertinoIcons.plus_circle,
+                          size: 16,
+                          color: primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          tr.addOutreachStats,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: primary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
-      ],
       ),
     );
   }
@@ -3152,171 +3199,233 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildMaterial(BuildContext context) {
     final tr = widget.tr;
     final theme = Theme.of(context);
-    final latest = widget.latestTestimonies.isEmpty ? null : widget.latestTestimonies.first;
+    final latest = widget.latestTestimonies.isEmpty
+        ? null
+        : widget.latestTestimonies.first;
     final hasLatest = latest != null;
     final showPersonal = _showPersonal;
-    final summary = showPersonal ? widget.personalSummary : widget.generalSummary;
+    final summary = showPersonal
+        ? widget.personalSummary
+        : widget.generalSummary;
 
     return RefreshIndicator.adaptive(
       onRefresh: widget.onRefresh,
       child: ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      children: [
-        _PageHeader(
-          title: tr.appTitle,
-          subtitle: tr.homeWitnessSub,
-          onSettings: widget.onSettings,
-        ),
-        const SizedBox(height: 16),
-        if (widget.loading)
-          const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
-        else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: hasLatest ? () => _openLatestTestimoniesSheet(context) : null,
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: LinearGradient(
-                        colors: [
-                          theme.colorScheme.primary.withOpacity(0.16),
-                          theme.colorScheme.primary.withOpacity(0.05),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border.all(color: theme.colorScheme.primary.withOpacity(0.26)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.auto_stories_rounded, color: theme.colorScheme.primary),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                tr.latestTestimony,
-                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-                              ),
-                            ),
-                            if (hasLatest) Icon(Icons.chevron_right_rounded, color: theme.colorScheme.primary),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          _PageHeader(
+            title: tr.appTitle,
+            subtitle: tr.homeWitnessSub,
+            onSettings: widget.onSettings,
+          ),
+          const SizedBox(height: 16),
+          if (widget.loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: hasLatest
+                        ? () => _openLatestTestimoniesSheet(context)
+                        : null,
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        gradient: LinearGradient(
+                          colors: [
+                            theme.colorScheme.primary.withOpacity(0.16),
+                            theme.colorScheme.primary.withOpacity(0.05),
                           ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          '”${latest?.text ?? tr.noLatestTestimonies}”',
-                          style: theme.textTheme.bodyLarge?.copyWith(height: 1.38, fontWeight: FontWeight.w500),
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withOpacity(0.26),
                         ),
-                        if ((latest?.addedByName?.isNotEmpty == true) || (latest?.author?.isNotEmpty == true)) ...[
-                          const SizedBox(height: 12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Row(
-                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              CircleAvatar(
-                                radius: 11,
-                                backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
-                                child: Icon(Icons.person_rounded, size: 13, color: theme.colorScheme.primary),
+                              Icon(
+                                Icons.auto_stories_rounded,
+                                color: theme.colorScheme.primary,
                               ),
                               const SizedBox(width: 8),
-                              Flexible(
+                              Expanded(
                                 child: Text(
-                                  (latest!.addedByName?.isNotEmpty == true ? latest.addedByName : latest.author)!,
-                                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  tr.latestTestimony,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                  ),
                                 ),
                               ),
+                              if (hasLatest)
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: theme.colorScheme.primary,
+                                ),
                             ],
                           ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '”${latest?.text ?? tr.noLatestTestimonies}”',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              height: 1.38,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if ((latest?.addedByName?.isNotEmpty == true) ||
+                              (latest?.author?.isNotEmpty == true)) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircleAvatar(
+                                  radius: 11,
+                                  backgroundColor: theme.colorScheme.primary
+                                      .withOpacity(0.15),
+                                  child: Icon(
+                                    Icons.person_rounded,
+                                    size: 13,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    (latest!.addedByName?.isNotEmpty == true
+                                        ? latest.addedByName
+                                        : latest.author)!,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 22),
-              Text(
-                tr.statisticsHeader,
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 12),
-              SegmentedButton<bool>(
-                segments: [
-                  ButtonSegment(value: false, label: Text(tr.generalStats)),
-                  ButtonSegment(
-                    value: true,
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (!widget.isAuthenticated) ...[
-                          const Icon(Icons.lock_outline_rounded, size: 13),
-                          const SizedBox(width: 4),
+                const SizedBox(height: 22),
+                Text(
+                  tr.statisticsHeader,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<bool>(
+                  segments: [
+                    ButtonSegment(value: false, label: Text(tr.generalStats)),
+                    ButtonSegment(
+                      value: true,
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (!widget.isAuthenticated) ...[
+                            const Icon(Icons.lock_outline_rounded, size: 13),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(tr.personalStats),
                         ],
-                        Text(tr.personalStats),
+                      ),
+                    ),
+                  ],
+                  selected: {_showPersonal},
+                  onSelectionChanged: (s) =>
+                      setState(() => _showPersonal = s.first),
+                  style: ButtonStyle(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    shape: WidgetStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (widget.summaryLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else if (showPersonal && widget.personalSummary == null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.lock_outline_rounded,
+                          size: 28,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          tr.personalStatsUnavailable,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ],
+                    ),
+                  )
+                else if (summary != null)
+                  _SummaryStatsCardMaterial(
+                    summary: summary,
+                    tr: tr,
+                    theme: theme,
+                  ),
+                if (widget.onAddOutreachStats != null &&
+                    !widget.summaryLoading) ...[
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: () => _openAddSheet(context),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: Text(widget.tr.addOutreachStats),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                        color: theme.colorScheme.primary.withOpacity(0.4),
+                      ),
+                      foregroundColor: theme.colorScheme.primary,
                     ),
                   ),
                 ],
-                selected: {_showPersonal},
-                onSelectionChanged: (s) => setState(() => _showPersonal = s.first),
-                style: ButtonStyle(
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (widget.summaryLoading)
-                const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
-              else if (showPersonal && widget.personalSummary == null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(Icons.lock_outline_rounded, size: 28, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(height: 8),
-                      Text(
-                        tr.personalStatsUnavailable,
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                )
-              else if (summary != null)
-                _SummaryStatsCardMaterial(summary: summary, tr: tr, theme: theme),
-              if (widget.onAddOutreachStats != null && !widget.summaryLoading) ...[
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: () => _openAddSheet(context),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: Text(widget.tr.addOutreachStats),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(44),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                    foregroundColor: theme.colorScheme.primary,
-                  ),
-                ),
               ],
-            ],
-          ),
-      ],
+            ),
+        ],
       ),
     );
   }
@@ -3332,14 +3441,14 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (_) => _OutreachStatsSheet(
         tr: widget.tr,
         existing: null,
-        onSave: ({
-          required int gospelsTold,
-          required int salvationPrayedUnreachable,
-          required int scripturesDistributed,
-          required int healingsDeliverances,
-          String? testimony,
-        }) =>
-            onSave(
+        onSave:
+            ({
+              required int gospelsTold,
+              required int salvationPrayedUnreachable,
+              required int scripturesDistributed,
+              required int healingsDeliverances,
+              String? testimony,
+            }) => onSave(
               gospelsTold: gospelsTold,
               salvationPrayedUnreachable: salvationPrayedUnreachable,
               scripturesDistributed: scripturesDistributed,
@@ -3356,7 +3465,10 @@ class _DashboardPageState extends State<DashboardPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => LatestTestimoniesSheet(tr: widget.tr, items: widget.latestTestimonies),
+      builder: (_) => LatestTestimoniesSheet(
+        tr: widget.tr,
+        items: widget.latestTestimonies,
+      ),
     );
   }
 }
@@ -3431,7 +3543,10 @@ class _OutreachTestimonyCard extends StatelessWidget {
               if (canDelete)
                 ListTile(
                   leading: const Icon(Icons.delete_outline, color: Colors.red),
-                  title: const Text('Удалить', style: TextStyle(color: Colors.red)),
+                  title: const Text(
+                    'Удалить',
+                    style: TextStyle(color: Colors.red),
+                  ),
                   onTap: () {
                     Navigator.of(context).pop();
                     _confirmDelete(context);
@@ -3449,10 +3564,7 @@ class _OutreachTestimonyCard extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _TestimonyEditSheet(
-        initialText: text,
-        onSave: onEdit!,
-      ),
+      builder: (_) => _TestimonyEditSheet(initialText: text, onSave: onEdit!),
     );
   }
 
@@ -3509,7 +3621,9 @@ class _OutreachTestimonyCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = _isApple
         ? _iosCardBackground(context)
-        : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.35);
+        : Theme.of(
+            context,
+          ).colorScheme.surfaceContainerHighest.withOpacity(0.35);
     final secondary = _isApple
         ? _iosSecondaryLabel(context)
         : Theme.of(context).colorScheme.onSurfaceVariant;
@@ -3563,7 +3677,10 @@ class _OutreachTestimonyCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: tint.withOpacity(isDark ? 0.18 : 0.10),
                                 borderRadius: BorderRadius.circular(6),
@@ -3691,7 +3808,10 @@ class _TestimonyEditSheetState extends State<_TestimonyEditSheet> {
                   onPressed: _saving ? null : _save,
                   child: _saving
                       ? const CupertinoActivityIndicator()
-                      : const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w600)),
+                      : const Text(
+                          'Сохранить',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
                 ),
             ],
           ),
@@ -3724,8 +3844,12 @@ class _TestimonyEditSheetState extends State<_TestimonyEditSheet> {
               onPressed: _saving ? null : _save,
               child: _saving
                   ? const SizedBox(
-                      width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Text('Сохранить'),
             ),
@@ -3742,7 +3866,11 @@ class _SummaryStatsCard extends StatelessWidget {
   final SummaryStats summary;
   final S tr;
   final Color tint;
-  const _SummaryStatsCard({required this.summary, required this.tr, required this.tint});
+  const _SummaryStatsCard({
+    required this.summary,
+    required this.tr,
+    required this.tint,
+  });
 
   static String _fmt(int n) {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
@@ -3761,10 +3889,7 @@ class _SummaryStatsCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                tint,
-                tint.withOpacity(0.72),
-              ],
+              colors: [tint, tint.withOpacity(0.72)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -3781,7 +3906,11 @@ class _SummaryStatsCard extends StatelessWidget {
                       color: Colors.white.withOpacity(0.22),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(CupertinoIcons.person_3_fill, size: 18, color: Colors.white),
+                    child: const Icon(
+                      CupertinoIcons.person_3_fill,
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -3927,7 +4056,11 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
   final SummaryStats summary;
   final S tr;
   final ThemeData theme;
-  const _SummaryStatsCardMaterial({required this.summary, required this.tr, required this.theme});
+  const _SummaryStatsCardMaterial({
+    required this.summary,
+    required this.tr,
+    required this.theme,
+  });
 
   static String _fmt(int n) {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
@@ -3963,13 +4096,21 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
                       color: Colors.white.withOpacity(0.20),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.groups_rounded, size: 20, color: Colors.white),
+                    child: const Icon(
+                      Icons.groups_rounded,
+                      size: 20,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       tr.totalHeardGospel,
-                      style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
@@ -4194,57 +4335,57 @@ class BelieversPage extends StatelessWidget {
     return RefreshIndicator.adaptive(
       onRefresh: onRefresh,
       child: ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-      children: [
-        _PageHeader(
-          title: tr.believers,
-          subtitle: tr.believersSub,
-          onSettings: onSettings,
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: BelieverStage.values
-                  .map((s) => _LegendChip(stage: s, lang: tr.lang))
-                  .toList(),
-            ),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+        children: [
+          _PageHeader(
+            title: tr.believers,
+            subtitle: tr.believersSub,
+            onSettings: onSettings,
           ),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          tr.list,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (loading)
-          const Center(
+          const SizedBox(height: 16),
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(32),
-              child: CircularProgressIndicator(),
-            ),
-          )
-        else if (believers.isEmpty)
-          _Empty(tr: tr, onAdd: onAdd)
-        else
-          ...believers.map(
-            (b) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _FullCard(
-                item: b,
-                lang: tr.lang,
-                onDelete: () => onDelete(b),
-                onStage: (s) => onStage(b, s),
+              padding: const EdgeInsets.all(16),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: BelieverStage.values
+                    .map((s) => _LegendChip(stage: s, lang: tr.lang))
+                    .toList(),
               ),
             ),
           ),
-      ],
+          const SizedBox(height: 20),
+          Text(
+            tr.list,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (believers.isEmpty)
+            _Empty(tr: tr, onAdd: onAdd)
+          else
+            ...believers.map(
+              (b) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _FullCard(
+                  item: b,
+                  lang: tr.lang,
+                  onDelete: () => onDelete(b),
+                  onStage: (s) => onStage(b, s),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -4841,9 +4982,10 @@ class _FullscreenEvangelAssetState extends State<_FullscreenEvangelAsset>
       return;
     }
     final startDrag = _drag;
-    final anim = Tween<Offset>(begin: startDrag, end: Offset.zero).animate(
-      CurvedAnimation(parent: _snapCtrl, curve: Curves.easeOutCubic),
-    );
+    final anim = Tween<Offset>(
+      begin: startDrag,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _snapCtrl, curve: Curves.easeOutCubic));
     anim.addListener(() {
       if (!mounted) return;
       setState(() {
@@ -5931,7 +6073,10 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
                     children: [
                       Text(
                         tr.outreachStatsHeader,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const Spacer(),
                       CupertinoButton(
@@ -5952,7 +6097,9 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
                         child: Icon(
                           CupertinoIcons.arrow_counterclockwise,
                           size: 18,
-                          color: CupertinoColors.destructiveRed.resolveFrom(context),
+                          color: CupertinoColors.destructiveRed.resolveFrom(
+                            context,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -6152,19 +6299,20 @@ class ProfilePage extends StatelessWidget {
       builder: (_) => _OutreachStatsSheet(
         tr: tr,
         existing: null,
-        onSave: ({
-          required int gospelsTold,
-          required int salvationPrayedUnreachable,
-          required int scripturesDistributed,
-          required int healingsDeliverances,
-          String? testimony,
-        }) => onAddOutreachStats(
-          gospelsTold: gospelsTold,
-          salvationPrayedUnreachable: salvationPrayedUnreachable,
-          scripturesDistributed: scripturesDistributed,
-          healingsDeliverances: healingsDeliverances,
-          testimony: testimony,
-        ),
+        onSave:
+            ({
+              required int gospelsTold,
+              required int salvationPrayedUnreachable,
+              required int scripturesDistributed,
+              required int healingsDeliverances,
+              String? testimony,
+            }) => onAddOutreachStats(
+              gospelsTold: gospelsTold,
+              salvationPrayedUnreachable: salvationPrayedUnreachable,
+              scripturesDistributed: scripturesDistributed,
+              healingsDeliverances: healingsDeliverances,
+              testimony: testimony,
+            ),
       ),
     );
   }
@@ -6178,18 +6326,19 @@ class ProfilePage extends StatelessWidget {
       builder: (_) => _OutreachStatsSheet(
         tr: tr,
         existing: myStats,
-        onSave: ({
-          required int gospelsTold,
-          required int salvationPrayedUnreachable,
-          required int scripturesDistributed,
-          required int healingsDeliverances,
-          String? testimony,
-        }) => onEditOutreachStats(
-          gospelsTold: gospelsTold,
-          salvationPrayedUnreachable: salvationPrayedUnreachable,
-          scripturesDistributed: scripturesDistributed,
-          healingsDeliverances: healingsDeliverances,
-        ),
+        onSave:
+            ({
+              required int gospelsTold,
+              required int salvationPrayedUnreachable,
+              required int scripturesDistributed,
+              required int healingsDeliverances,
+              String? testimony,
+            }) => onEditOutreachStats(
+              gospelsTold: gospelsTold,
+              salvationPrayedUnreachable: salvationPrayedUnreachable,
+              scripturesDistributed: scripturesDistributed,
+              healingsDeliverances: healingsDeliverances,
+            ),
       ),
     );
   }
@@ -6398,7 +6547,10 @@ class ProfilePage extends StatelessWidget {
             child: GestureDetector(
               onTap: () => _openAddOutreachStatsSheet(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 20,
+                ),
                 decoration: BoxDecoration(
                   color: _iosCardBackground(context),
                   borderRadius: BorderRadius.circular(12),
@@ -6406,9 +6558,19 @@ class ProfilePage extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(CupertinoIcons.chart_bar_alt_fill, size: 20, color: _iosSecondaryLabel(context)),
+                    Icon(
+                      CupertinoIcons.chart_bar_alt_fill,
+                      size: 20,
+                      color: _iosSecondaryLabel(context),
+                    ),
                     const SizedBox(width: 10),
-                    Text(tr.noStatsYet, style: TextStyle(fontSize: 15, color: _iosSecondaryLabel(context))),
+                    Text(
+                      tr.noStatsYet,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: _iosSecondaryLabel(context),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -6463,9 +6625,9 @@ class ProfilePage extends StatelessWidget {
     return RefreshIndicator.adaptive(
       onRefresh: onRefresh,
       child: ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(top: 8, bottom: 110),
-      children: children,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 8, bottom: 110),
+        children: children,
       ),
     );
   }
@@ -6519,298 +6681,333 @@ class ProfilePage extends StatelessWidget {
     return RefreshIndicator.adaptive(
       onRefresh: onRefresh,
       child: ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      children: [
-        _PageHeader(
-          title: tr.profile,
-          subtitle: tr.profileSub,
-          onSettings: onSettings,
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: !isAuthenticated
-                ? Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: theme.colorScheme.primary.withOpacity(
-                          0.12,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          _PageHeader(
+            title: tr.profile,
+            subtitle: tr.profileSub,
+            onSettings: onSettings,
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: !isAuthenticated
+                  ? Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: theme.colorScheme.primary
+                              .withOpacity(0.12),
+                          child: Icon(
+                            Icons.lock_outline_rounded,
+                            color: theme.colorScheme.primary,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.lock_outline_rounded,
-                          color: theme.colorScheme.primary,
+                        const SizedBox(height: 10),
+                        Text(
+                          tr.profileNeedAuth,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        tr.profileNeedAuth,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        const SizedBox(height: 6),
+                        Text(
+                          tr.profileNeedAuthSub,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        tr.profileNeedAuthSub,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.white,
+                        const SizedBox(height: 14),
+                        FilledButton.icon(
+                          onPressed: onOpenAuth,
+                          icon: const Icon(Icons.login_rounded),
+                          label: Text(tr.signIn),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 14),
-                      FilledButton.icon(
-                        onPressed: onOpenAuth,
-                        icon: const Icon(Icons.login_rounded),
-                        label: Text(tr.signIn),
-                      ),
-                    ],
-                  )
-                : backendUser == null
-                ? Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 26,
-                        backgroundColor: theme.colorScheme.error.withOpacity(
-                          0.12,
+                      ],
+                    )
+                  : backendUser == null
+                  ? Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 26,
+                          backgroundColor: theme.colorScheme.error.withOpacity(
+                            0.12,
+                          ),
+                          child: Icon(
+                            Icons.cloud_off_rounded,
+                            color: theme.colorScheme.error,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.cloud_off_rounded,
-                          color: theme.colorScheme.error,
+                        const SizedBox(height: 10),
+                        Text(
+                          tr.serverAccountUnavailable,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        tr.serverAccountUnavailable,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          onPressed: () => _confirmLogout(context),
+                          icon: const Icon(Icons.logout_rounded, size: 18),
+                          label: Text(tr.signOut),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 14),
-                      OutlinedButton.icon(
-                        onPressed: () => _confirmLogout(context),
-                        icon: const Icon(Icons.logout_rounded, size: 18),
-                        label: Text(tr.signOut),
-                      ),
-                    ],
-                  )
-                : Column(
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              tr.serverAccount,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              tooltip: tr.editAccountProfile,
+                              onPressed: () async {
+                                await onEditAccount();
+                              },
+                              icon: const Icon(Icons.edit_rounded),
+                            ),
+                            IconButton(
+                              tooltip: tr.signOut,
+                              onPressed: () => _confirmLogout(context),
+                              icon: const Icon(Icons.logout_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        CircleAvatar(
+                          radius: 34,
+                          backgroundColor: theme.colorScheme.primary
+                              .withOpacity(0.12),
+                          foregroundImage: _profileAvatarImage(
+                            cachedAvatarPath,
+                            backendAvatarUrl,
+                          ),
+                          child:
+                              _profileAvatarImage(
+                                    cachedAvatarPath,
+                                    backendAvatarUrl,
+                                  ) ==
+                                  null
+                              ? Text(
+                                  backendUser!.initials,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          backendUser!.name,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          backendUser!.email,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (backendUser!.about.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest
+                                  .withOpacity(0.45),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              backendUser!.about,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+          if (isAuthenticated) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                statCard(
+                  icon: Icons.favorite_rounded,
+                  value: '$total',
+                  label: tr.total,
+                ),
+                const SizedBox(width: 10),
+                statCard(
+                  icon: Icons.auto_awesome_rounded,
+                  value: '$savedCount',
+                  label: tr.savedPeople,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Text(
+                  tr.outreachStatsHeader,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => _openAddOutreachStatsSheet(context),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: Text(tr.addOutreachStats),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (myStatsLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (myStats == null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                    0.35,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  tr.noStatsYet,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            else
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Text(
-                            tr.serverAccount,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
+                            tr.outreachStatsHeader,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           const Spacer(),
                           IconButton(
-                            tooltip: tr.editAccountProfile,
-                            onPressed: () async {
-                              await onEditAccount();
-                            },
-                            icon: const Icon(Icons.edit_rounded),
+                            tooltip: tr.editOutreachStats,
+                            icon: const Icon(Icons.edit_rounded, size: 18),
+                            onPressed: () =>
+                                _openEditOutreachStatsSheet(context),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
                           ),
                           IconButton(
-                            tooltip: tr.signOut,
-                            onPressed: () => _confirmLogout(context),
-                            icon: const Icon(Icons.logout_rounded),
+                            tooltip: tr.resetStats,
+                            icon: const Icon(
+                              Icons.restart_alt_rounded,
+                              size: 18,
+                            ),
+                            onPressed: () => _confirmResetStats(context),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          _matStatChip(
+                            context,
+                            Icons.campaign_rounded,
+                            '${myStats!.gospelsTold}',
+                            tr.gospelsTold,
+                          ),
+                          const SizedBox(width: 8),
+                          _matStatChip(
+                            context,
+                            Icons.favorite_rounded,
+                            '${myStats!.salvationPrayedUnreachable}',
+                            tr.salvationPrayedUnreachable,
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      CircleAvatar(
-                        radius: 34,
-                        backgroundColor: theme.colorScheme.primary.withOpacity(
-                          0.12,
-                        ),
-                        foregroundImage: _profileAvatarImage(
-                          cachedAvatarPath,
-                          backendAvatarUrl,
-                        ),
-                        child:
-                            _profileAvatarImage(
-                                  cachedAvatarPath,
-                                  backendAvatarUrl,
-                                ) ==
-                                null
-                            ? Text(
-                                backendUser!.initials,
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        backendUser!.name,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        backendUser!.email,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (backendUser!.about.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest
-                                .withOpacity(0.45),
-                            borderRadius: BorderRadius.circular(12),
+                      Row(
+                        children: [
+                          _matStatChip(
+                            context,
+                            Icons.menu_book_rounded,
+                            '${myStats!.scripturesDistributed}',
+                            tr.scripturesDistributed,
                           ),
+                          const SizedBox(width: 8),
+                          _matStatChip(
+                            context,
+                            Icons.health_and_safety_rounded,
+                            '${myStats!.healingsDeliverances}',
+                            tr.healingsDeliverances,
+                          ),
+                        ],
+                      ),
+                      if (myStats!.testimonies.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Align(
+                          alignment: Alignment.centerLeft,
                           child: Text(
-                            backendUser!.about,
-                            style: theme.textTheme.bodyMedium,
+                            tr.testimonies,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
+                        const SizedBox(height: 8),
+                        for (int i = 0; i < myStats!.testimonies.length; i++)
+                          _OutreachTestimonyCard(
+                            text: myStats!.testimonies[i],
+                            number: myStats!.testimonies.length - i,
+                            tint: theme.colorScheme.primary,
+                            onEdit: onEditTestimony != null
+                                ? (newText) => onEditTestimony!(i, newText)
+                                : null,
+                            onDelete: onDeleteTestimony != null
+                                ? () => onDeleteTestimony!(i)
+                                : null,
+                          ),
                       ],
                     ],
                   ),
-          ),
-        ),
-        if (isAuthenticated) ...[
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              statCard(
-                icon: Icons.favorite_rounded,
-                value: '$total',
-                label: tr.total,
-              ),
-              const SizedBox(width: 10),
-              statCard(
-                icon: Icons.auto_awesome_rounded,
-                value: '$savedCount',
-                label: tr.savedPeople,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Text(
-                tr.outreachStatsHeader,
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => _openAddOutreachStatsSheet(context),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(tr.addOutreachStats),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (myStatsLoading)
-            const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
-          else if (myStats == null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                tr.noStatsYet,
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.center,
-              ),
-            )
-          else
-            Card(
-              margin: EdgeInsets.zero,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          tr.outreachStatsHeader,
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          tooltip: tr.editOutreachStats,
-                          icon: const Icon(Icons.edit_rounded, size: 18),
-                          onPressed: () => _openEditOutreachStatsSheet(context),
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                        ),
-                        IconButton(
-                          tooltip: tr.resetStats,
-                          icon: const Icon(Icons.restart_alt_rounded, size: 18),
-                          onPressed: () => _confirmResetStats(context),
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _matStatChip(context, Icons.campaign_rounded, '${myStats!.gospelsTold}', tr.gospelsTold),
-                        const SizedBox(width: 8),
-                        _matStatChip(context, Icons.favorite_rounded, '${myStats!.salvationPrayedUnreachable}', tr.salvationPrayedUnreachable),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        _matStatChip(context, Icons.menu_book_rounded, '${myStats!.scripturesDistributed}', tr.scripturesDistributed),
-                        const SizedBox(width: 8),
-                        _matStatChip(context, Icons.health_and_safety_rounded, '${myStats!.healingsDeliverances}', tr.healingsDeliverances),
-                      ],
-                    ),
-                    if (myStats!.testimonies.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          tr.testimonies,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      for (int i = 0; i < myStats!.testimonies.length; i++)
-                        _OutreachTestimonyCard(
-                          text: myStats!.testimonies[i],
-                          number: myStats!.testimonies.length - i,
-                          tint: theme.colorScheme.primary,
-                          onEdit: onEditTestimony != null
-                              ? (newText) => onEditTestimony!(i, newText)
-                              : null,
-                          onDelete: onDeleteTestimony != null
-                              ? () => onDeleteTestimony!(i)
-                              : null,
-                        ),
-                    ],
-                  ],
                 ),
               ),
-            ),
+          ],
         ],
-      ],
       ),
     );
   }
@@ -9026,11 +9223,13 @@ class _TestimonyCard extends StatelessWidget {
                             backgroundColor: tint.withOpacity(
                               isDark ? 0.20 : 0.12,
                             ),
-                            foregroundImage: item.addedByAvatarUrl != null &&
+                            foregroundImage:
+                                item.addedByAvatarUrl != null &&
                                     item.addedByAvatarUrl!.isNotEmpty
                                 ? NetworkImage(item.addedByAvatarUrl!)
                                 : null,
-                            child: (item.addedByAvatarUrl == null ||
+                            child:
+                                (item.addedByAvatarUrl == null ||
                                     item.addedByAvatarUrl!.isEmpty)
                                 ? Icon(
                                     CupertinoIcons.person_fill,
@@ -10310,8 +10509,7 @@ class S {
       _ru ? 'Роздано Евангелий от Иоана' : 'Gospels of John distributed';
   String get healingsDeliverances =>
       _ru ? 'Исцелений / освобождений' : 'Healings & deliverances';
-  String get addOutreachStats =>
-      _ru ? 'Добавить аутрич' : 'Add outreach';
+  String get addOutreachStats => _ru ? 'Добавить аутрич' : 'Add outreach';
   String get editOutreachStats => _ru ? 'Редактировать' : 'Edit';
   String get testimonyLabel => _ru ? 'Свидетельство' : 'Testimony';
   String get testimonyPlaceholder =>
@@ -10323,8 +10521,7 @@ class S {
   String get outreachStatsSaved => _ru ? 'Статистика сохранена' : 'Stats saved';
   String get outreachStatsError =>
       _ru ? 'Не удалось сохранить' : 'Could not save stats';
-  String get noStatsYet =>
-      _ru ? 'Нет данных аутрича' : 'No outreach data yet';
+  String get noStatsYet => _ru ? 'Нет данных аутрича' : 'No outreach data yet';
   String get resetStats => _ru ? 'Сбросить' : 'Reset';
   String get resetStatsTitle => _ru ? 'Сбросить статистику?' : 'Reset stats?';
   String get resetStatsBody => _ru
