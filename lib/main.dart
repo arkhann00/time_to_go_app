@@ -150,6 +150,7 @@ class OutreachStatEntry {
   final int gospelsTold;
   final int salvationPrayedUnreachable;
   final int scripturesDistributed;
+  final int fathersLettersDistributed;
   final int healingsDeliverances;
   final List<OutreachTestimony> testimonies;
   final DateTime createdAt;
@@ -163,6 +164,7 @@ class OutreachStatEntry {
     required this.gospelsTold,
     required this.salvationPrayedUnreachable,
     required this.scripturesDistributed,
+    required this.fathersLettersDistributed,
     required this.healingsDeliverances,
     required this.createdAt,
     required this.updatedAt,
@@ -181,6 +183,8 @@ class OutreachStatEntry {
           (m['salvation_prayed_unreachable'] as num?)?.toInt() ?? 0,
       scripturesDistributed:
           (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
+      fathersLettersDistributed:
+          (m['fathers_letters_distributed'] as num?)?.toInt() ?? 0,
       healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
       testimonies:
           (m['testimonies'] as List<dynamic>?)
@@ -201,25 +205,32 @@ class OutreachStatEntry {
 
 class SummaryStats {
   final int totalSalvation;
+  final int totalSaved;
   final int salvationNoContact;
   final int salvationHasContact;
   final int scripturesDistributed;
+  final int fathersLettersDistributed;
   final int healingsDeliverances;
 
   const SummaryStats({
     this.totalSalvation = 0,
+    this.totalSaved = 0,
     this.salvationNoContact = 0,
     this.salvationHasContact = 0,
     this.scripturesDistributed = 0,
+    this.fathersLettersDistributed = 0,
     this.healingsDeliverances = 0,
   });
 
   factory SummaryStats.fromMap(Map<String, dynamic> m) => SummaryStats(
     totalSalvation: (m['total_heard_gospel'] as num?)?.toInt() ?? 0,
+    totalSaved: (m['total_saved'] as num?)?.toInt() ?? 0,
     salvationNoContact: (m['heard_gospel_no_contact'] as num?)?.toInt() ?? 0,
     salvationHasContact:
         (m['heard_gospel_has_contact'] as num?)?.toInt() ?? 0,
     scripturesDistributed: (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
+    fathersLettersDistributed:
+        (m['fathers_letters_distributed'] as num?)?.toInt() ?? 0,
     healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
   );
 }
@@ -1059,6 +1070,7 @@ class _OutreachStatsSheet extends StatefulWidget {
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
+    required int fathersLettersDistributed,
     required int healingsDeliverances,
     String? testimony,
   })
@@ -1078,6 +1090,7 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
   late final TextEditingController _gospels;
   late final TextEditingController _salvation;
   late final TextEditingController _scriptures;
+  late final TextEditingController _fathersLetters;
   late final TextEditingController _healings;
   late final TextEditingController _testimony;
   bool _saving = false;
@@ -1094,6 +1107,9 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
     _scriptures = TextEditingController(
       text: e != null ? '${e.scripturesDistributed}' : '',
     );
+    _fathersLetters = TextEditingController(
+      text: e != null ? '${e.fathersLettersDistributed}' : '',
+    );
     _healings = TextEditingController(
       text: e != null ? '${e.healingsDeliverances}' : '',
     );
@@ -1105,6 +1121,7 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
     _gospels.dispose();
     _salvation.dispose();
     _scriptures.dispose();
+    _fathersLetters.dispose();
     _healings.dispose();
     _testimony.dispose();
     super.dispose();
@@ -1123,6 +1140,7 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
         gospelsTold: _parse(_gospels),
         salvationPrayedUnreachable: _parse(_salvation),
         scripturesDistributed: _parse(_scriptures),
+        fathersLettersDistributed: _parse(_fathersLetters),
         healingsDeliverances: _parse(_healings),
         testimony: testimonyText.isEmpty ? null : testimonyText,
       );
@@ -1225,6 +1243,13 @@ class _OutreachStatsSheetState extends State<_OutreachStatsSheet> {
                             iconBackground: const Color(0xFFFF9500),
                             placeholder: tr.scripturesDistributed,
                             controller: _scriptures,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _AppleInputRow(
+                            icon: CupertinoIcons.envelope_fill,
+                            iconBackground: const Color(0xFF007AFF),
+                            placeholder: tr.fathersLettersDistributed,
+                            controller: _fathersLetters,
                             keyboardType: TextInputType.number,
                           ),
                           _AppleInputRow(
@@ -2712,6 +2737,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
+    required int fathersLettersDistributed,
     required int healingsDeliverances,
     String? testimony,
   }) async {
@@ -2719,6 +2745,7 @@ class _HomeScreenState extends State<HomeScreen> {
       gospelsTold: gospelsTold,
       salvationPrayedUnreachable: salvationPrayedUnreachable,
       scripturesDistributed: scripturesDistributed,
+      fathersLettersDistributed: fathersLettersDistributed,
       healingsDeliverances: healingsDeliverances,
       testimony: testimony,
     );
@@ -2732,12 +2759,14 @@ class _HomeScreenState extends State<HomeScreen> {
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
+    required int fathersLettersDistributed,
     required int healingsDeliverances,
   }) async {
     final result = await _backendApi.patchOutreachStatisticsMe(
       gospelsTold: gospelsTold,
       salvationPrayedUnreachable: salvationPrayedUnreachable,
       scripturesDistributed: scripturesDistributed,
+      fathersLettersDistributed: fathersLettersDistributed,
       healingsDeliverances: healingsDeliverances,
     );
     if (mounted) {
@@ -2781,12 +2810,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 required int gospelsTold,
                 required int salvationPrayedUnreachable,
                 required int scripturesDistributed,
+                required int fathersLettersDistributed,
                 required int healingsDeliverances,
                 String? testimony,
               }) => _addOutreachStats(
                 gospelsTold: gospelsTold,
                 salvationPrayedUnreachable: salvationPrayedUnreachable,
                 scripturesDistributed: scripturesDistributed,
+                fathersLettersDistributed: fathersLettersDistributed,
                 healingsDeliverances: healingsDeliverances,
                 testimony: testimony,
               )
@@ -2821,12 +2852,14 @@ class _HomeScreenState extends State<HomeScreen> {
               required int gospelsTold,
               required int salvationPrayedUnreachable,
               required int scripturesDistributed,
+              required int fathersLettersDistributed,
               required int healingsDeliverances,
               String? testimony,
             }) => _addOutreachStats(
               gospelsTold: gospelsTold,
               salvationPrayedUnreachable: salvationPrayedUnreachable,
               scripturesDistributed: scripturesDistributed,
+              fathersLettersDistributed: fathersLettersDistributed,
               healingsDeliverances: healingsDeliverances,
               testimony: testimony,
             ),
@@ -2835,11 +2868,13 @@ class _HomeScreenState extends State<HomeScreen> {
               required int gospelsTold,
               required int salvationPrayedUnreachable,
               required int scripturesDistributed,
+              required int fathersLettersDistributed,
               required int healingsDeliverances,
             }) => _editOutreachStats(
               gospelsTold: gospelsTold,
               salvationPrayedUnreachable: salvationPrayedUnreachable,
               scripturesDistributed: scripturesDistributed,
+              fathersLettersDistributed: fathersLettersDistributed,
               healingsDeliverances: healingsDeliverances,
             ),
         onResetOutreachStats: _resetOutreachStats,
@@ -2970,6 +3005,7 @@ class DashboardPage extends StatefulWidget {
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
+    required int fathersLettersDistributed,
     required int healingsDeliverances,
     String? testimony,
   })?
@@ -3443,12 +3479,14 @@ class _DashboardPageState extends State<DashboardPage> {
               required int gospelsTold,
               required int salvationPrayedUnreachable,
               required int scripturesDistributed,
+              required int fathersLettersDistributed,
               required int healingsDeliverances,
               String? testimony,
             }) => onSave(
               gospelsTold: gospelsTold,
               salvationPrayedUnreachable: salvationPrayedUnreachable,
               scripturesDistributed: scripturesDistributed,
+              fathersLettersDistributed: fathersLettersDistributed,
               healingsDeliverances: healingsDeliverances,
               testimony: testimony,
             ),
@@ -3962,6 +4000,33 @@ class _SummaryStatsCard extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+        // ── Saved + Father's Letters row ───────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: CupertinoIcons.checkmark_seal_fill,
+                color: const Color(0xFF34C759),
+                value: _fmt(summary.totalSaved),
+                label: tr.totalSaved,
+                isDark: isDark,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: CupertinoIcons.envelope_fill,
+                color: const Color(0xFF007AFF),
+                value: _fmt(summary.fathersLettersDistributed),
+                label: tr.fathersLettersDistributed,
+                isDark: isDark,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -4143,6 +4208,31 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
                 color: const Color(0xFF5856D6),
                 value: _fmt(summary.healingsDeliverances),
                 label: tr.healingsDeliverances,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // ── Saved + Father's Letters ──────────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: Icons.verified_rounded,
+                color: const Color(0xFF34C759),
+                value: _fmt(summary.totalSaved),
+                label: tr.totalSaved,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _miniCard(
+                context,
+                icon: Icons.mail_rounded,
+                color: const Color(0xFF007AFF),
+                value: _fmt(summary.fathersLettersDistributed),
+                label: tr.fathersLettersDistributed,
               ),
             ),
           ],
@@ -6120,6 +6210,21 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MiniStatItem(
+                              icon: CupertinoIcons.envelope_fill,
+                              color: const Color(0xFF007AFF),
+                              value: '${entry.fathersLettersDistributed}',
+                              label: tr.fathersLettersDistributed,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Expanded(child: SizedBox()),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -6173,6 +6278,7 @@ class ProfilePage extends StatelessWidget {
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
+    required int fathersLettersDistributed,
     required int healingsDeliverances,
     String? testimony,
   })
@@ -6181,6 +6287,7 @@ class ProfilePage extends StatelessWidget {
     required int gospelsTold,
     required int salvationPrayedUnreachable,
     required int scripturesDistributed,
+    required int fathersLettersDistributed,
     required int healingsDeliverances,
   })
   onEditOutreachStats;
@@ -6266,12 +6373,14 @@ class ProfilePage extends StatelessWidget {
               required int gospelsTold,
               required int salvationPrayedUnreachable,
               required int scripturesDistributed,
+              required int fathersLettersDistributed,
               required int healingsDeliverances,
               String? testimony,
             }) => onAddOutreachStats(
               gospelsTold: gospelsTold,
               salvationPrayedUnreachable: salvationPrayedUnreachable,
               scripturesDistributed: scripturesDistributed,
+              fathersLettersDistributed: fathersLettersDistributed,
               healingsDeliverances: healingsDeliverances,
               testimony: testimony,
             ),
@@ -6293,12 +6402,14 @@ class ProfilePage extends StatelessWidget {
               required int gospelsTold,
               required int salvationPrayedUnreachable,
               required int scripturesDistributed,
+              required int fathersLettersDistributed,
               required int healingsDeliverances,
               String? testimony,
             }) => onEditOutreachStats(
               gospelsTold: gospelsTold,
               salvationPrayedUnreachable: salvationPrayedUnreachable,
               scripturesDistributed: scripturesDistributed,
+              fathersLettersDistributed: fathersLettersDistributed,
               healingsDeliverances: healingsDeliverances,
             ),
       ),
@@ -6934,6 +7045,17 @@ class ProfilePage extends StatelessWidget {
                             Icons.health_and_safety_rounded,
                             '${myStats!.healingsDeliverances}',
                             tr.healingsDeliverances,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _matStatChip(
+                            context,
+                            Icons.mail_rounded,
+                            '${myStats!.fathersLettersDistributed}',
+                            tr.fathersLettersDistributed,
                           ),
                         ],
                       ),
@@ -10466,6 +10588,8 @@ class S {
       _ru ? 'Помолились молитвой покаяния' : 'Prayed, unreachable';
   String get scripturesDistributed =>
       _ru ? 'Роздано Евангелий от Иоана' : 'Gospels of John distributed';
+  String get fathersLettersDistributed =>
+      _ru ? 'Роздано Писем Отца' : "Father's Letters distributed";
   String get healingsDeliverances =>
       _ru ? 'Исцелений / освобождений' : 'Healings & deliverances';
   String get addOutreachStats => _ru ? 'Добавить аутрич' : 'Add outreach';
@@ -10491,6 +10615,7 @@ class S {
   String get personalStats => _ru ? 'Личная' : 'Personal';
   String get totalSalvation =>
       _ru ? 'Всего принял Иисуса' : 'Total Salvation';
+  String get totalSaved => _ru ? 'Всего спасенных' : 'Total saved';
   String get salvationNoContact =>
       _ru ? 'Принял Иисуса, нет контакта' : 'Salvation, no contact';
   String get salvationHasContact =>

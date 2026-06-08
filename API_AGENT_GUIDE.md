@@ -8,11 +8,15 @@ Use it as the single source of truth for endpoints, auth, request/response shape
 >
 > **CHANGE (2026-06-08)** — `testimonies` в ответе изменён с `list[string]` на `list[{id, text}]`.
 > `PATCH /outreach-statistics/me` теперь поддерживает удаление свидетельства через `delete_testimony_id`.
+>
+> **CHANGE (2026-06-09)** — Добавлено поле `fathers_letters_distributed` (Раздано Писем Отца) во все endpoints статистики.
+> `GET /outreach-statistics/summary` теперь возвращает `total_saved` и `fathers_letters_distributed`.
 
 ## Base
 
+- Base URL (production): `https://api.time.to.go.xn--80a6ad.space` ✅ HTTPS
 - Base URL (local): `http://127.0.0.1:8000`
-- Swagger UI: `http://127.0.0.1:8000/docs`
+- Swagger UI: `https://api.time.to.go.xn--80a6ad.space/docs`
 - Content-Type: `application/json` (except avatar upload which is `multipart/form-data`)
 
 ---
@@ -146,7 +150,8 @@ Fields:
 | `user_id`                      | integer            | unique — one record per user                |
 | `gospels_told`                 | integer ≥ 0        | running total                               |
 | `salvation_prayed_unreachable` | integer ≥ 0        | running total                               |
-| `scriptures_distributed`       | integer ≥ 0        | running total                               |
+| `scriptures_distributed`       | integer ≥ 0        | Раздано Евангелие от Иоана                  |
+| `fathers_letters_distributed`  | integer ≥ 0        | Раздано Писем Отца                          |
 | `healings_deliverances`        | integer ≥ 0        | running total                               |
 | `testimonies`                  | `list[{id, text}]` | list of testimonies added by the evangelist |
 | `created_at`                   | ISO 8601 datetime  |                                             |
@@ -195,13 +200,15 @@ Combines testimonies from both `Believer` records and `OutreachStatistics` recor
 
 Aggregated view combining Believer counts and Outreach Statistics totals.
 
-| Field                      | Meaning                                                        |
-| -------------------------- | -------------------------------------------------------------- |
-| `total_heard_gospel`       | All believers + `gospels_told` total                           |
-| `heard_gospel_no_contact`  | `gospels_told` total + believers with no phone AND no telegram |
-| `heard_gospel_has_contact` | Believers who have phone OR telegram                           |
-| `scriptures_distributed`   | `scriptures_distributed` total                                 |
-| `healings_deliverances`    | `healings_deliverances` total                                  |
+| Field                         | Meaning                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `total_heard_gospel`          | `count(believers)` + `sum(gospels_told)`                                          |
+| `total_saved`                 | `count(believers where stage ≠ interested)` + `sum(salvation_prayed_unreachable)` |
+| `heard_gospel_no_contact`     | `sum(gospels_told)` + `count(believers with no phone AND no telegram)`            |
+| `heard_gospel_has_contact`    | `count(believers with phone OR telegram)`                                         |
+| `scriptures_distributed`      | `sum(scriptures_distributed)` — Раздано Евангелие от Иоана                        |
+| `fathers_letters_distributed` | `sum(fathers_letters_distributed)` — Раздано Писем Отца                           |
+| `healings_deliverances`       | `sum(healings_deliverances)` — Исцеления / Освобождение                           |
 
 ---
 
@@ -507,22 +514,26 @@ Response `200`:
 ```json
 {
   "total_heard_gospel": 150,
+  "total_saved": 35,
   "heard_gospel_no_contact": 120,
   "heard_gospel_has_contact": 30,
   "scriptures_distributed": 45,
+  "fathers_letters_distributed": 20,
   "healings_deliverances": 12
 }
 ```
 
 Field definitions:
 
-| Field                      | Formula                                                                |
-| -------------------------- | ---------------------------------------------------------------------- |
-| `total_heard_gospel`       | `count(believers)` + `sum(gospels_told)`                               |
-| `heard_gospel_no_contact`  | `sum(gospels_told)` + `count(believers with no phone AND no telegram)` |
-| `heard_gospel_has_contact` | `count(believers with phone OR telegram)`                              |
-| `scriptures_distributed`   | `sum(scriptures_distributed)`                                          |
-| `healings_deliverances`    | `sum(healings_deliverances)`                                           |
+| Field                         | Formula                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `total_heard_gospel`          | `count(believers)` + `sum(gospels_told)`                                          |
+| `total_saved`                 | `count(believers where stage ≠ interested)` + `sum(salvation_prayed_unreachable)` |
+| `heard_gospel_no_contact`     | `sum(gospels_told)` + `count(believers with no phone AND no telegram)`            |
+| `heard_gospel_has_contact`    | `count(believers with phone OR telegram)`                                         |
+| `scriptures_distributed`      | `sum(scriptures_distributed)` — Раздано Евангелие от Иоана                        |
+| `fathers_letters_distributed` | `sum(fathers_letters_distributed)` — Раздано Писем Отца                           |
+| `healings_deliverances`       | `sum(healings_deliverances)` — Исцеления / Освобождение                           |
 
 Note: `personal` requires a valid bearer token. `general` works without auth too.
 
@@ -540,6 +551,7 @@ Response `200`:
   "gospels_told": 42,
   "salvation_prayed_unreachable": 5,
   "scriptures_distributed": 20,
+  "fathers_letters_distributed": 10,
   "healings_deliverances": 8,
   "testimonies": [
     { "id": 1, "text": "God healed three people today" },
@@ -563,6 +575,7 @@ Request:
   "gospels_told": 5,
   "salvation_prayed_unreachable": 1,
   "scriptures_distributed": 10,
+  "fathers_letters_distributed": 3,
   "healings_deliverances": 2,
   "testimony": "God healed three people today"
 }
@@ -584,6 +597,7 @@ Request (all fields optional):
 {
   "gospels_told": 100,
   "scriptures_distributed": 50,
+  "fathers_letters_distributed": 20,
   "delete_testimony_id": 3
 }
 ```
@@ -620,6 +634,7 @@ Response `200`:
     "gospels_told": 42,
     "salvation_prayed_unreachable": 5,
     "scriptures_distributed": 20,
+    "fathers_letters_distributed": 10,
     "healings_deliverances": 8,
     "testimonies": [{ "id": 1, "text": "God healed three people today" }],
     "created_at": "2026-06-01T10:00:00+00:00",
@@ -671,7 +686,7 @@ The entire Outreach Statistics API was redesigned. If the mobile app has any of 
 
 - Each user has exactly **one** statistics record (unique constraint on `user_id`).
 - Statistics are cumulative totals, not per-event records.
-- `salvation_prayed_unreachable` still exists in the record but is **not** used in the summary calculation — it is available for display in the user's own stats screen if needed.
+- `salvation_prayed_unreachable` is included in the summary as part of `total_saved`.
 
 ### New main screen endpoint
 

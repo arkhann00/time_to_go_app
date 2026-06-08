@@ -370,6 +370,7 @@ class BackendApi {
     int gospelsTold = 0,
     int salvationPrayedUnreachable = 0,
     int scripturesDistributed = 0,
+    int fathersLettersDistributed = 0,
     int healingsDeliverances = 0,
     String? testimony,
   }) async {
@@ -377,6 +378,7 @@ class BackendApi {
       'gospels_told': gospelsTold,
       'salvation_prayed_unreachable': salvationPrayedUnreachable,
       'scriptures_distributed': scripturesDistributed,
+      'fathers_letters_distributed': fathersLettersDistributed,
       'healings_deliverances': healingsDeliverances,
     };
     if (testimony != null) body['testimony'] = testimony.trim().isEmpty ? null : testimony.trim();
@@ -395,6 +397,7 @@ class BackendApi {
     int? gospelsTold,
     int? salvationPrayedUnreachable,
     int? scripturesDistributed,
+    int? fathersLettersDistributed,
     int? healingsDeliverances,
     int? deleteTestimonyId,
   }) async {
@@ -405,6 +408,9 @@ class BackendApi {
     }
     if (scripturesDistributed != null) {
       body['scriptures_distributed'] = scripturesDistributed;
+    }
+    if (fathersLettersDistributed != null) {
+      body['fathers_letters_distributed'] = fathersLettersDistributed;
     }
     if (healingsDeliverances != null) {
       body['healings_deliverances'] = healingsDeliverances;
