@@ -42,7 +42,7 @@ class BackendApi {
   Uri resolveUrl(String relativeOrAbsolute) {
     final parsed = Uri.tryParse(relativeOrAbsolute);
     if (parsed != null && parsed.hasScheme) return parsed;
-    return _baseUri.resolve(relativeOrAbsolute);
+    return Uri.parse('$_baseStr$relativeOrAbsolute');
   }
 
   Future<List<int>> downloadBytes(String relativeOrAbsolute) async {
@@ -148,7 +148,7 @@ class BackendApi {
       );
     }
 
-    final uri = _baseUri.resolve('/auth/me/avatar');
+    final uri = Uri.parse('$_baseStr/auth/me/avatar');
     final request = http.MultipartRequest('POST', uri)
       ..headers['Authorization'] = 'Bearer $token'
       ..files.add(await http.MultipartFile.fromPath('avatar', filePath));
