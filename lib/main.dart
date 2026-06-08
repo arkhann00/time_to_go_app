@@ -200,24 +200,24 @@ class OutreachStatEntry {
 }
 
 class SummaryStats {
-  final int totalHeardGospel;
-  final int heardGospelNoContact;
-  final int heardGospelHasContact;
+  final int totalSalvation;
+  final int salvationNoContact;
+  final int salvationHasContact;
   final int scripturesDistributed;
   final int healingsDeliverances;
 
   const SummaryStats({
-    this.totalHeardGospel = 0,
-    this.heardGospelNoContact = 0,
-    this.heardGospelHasContact = 0,
+    this.totalSalvation = 0,
+    this.salvationNoContact = 0,
+    this.salvationHasContact = 0,
     this.scripturesDistributed = 0,
     this.healingsDeliverances = 0,
   });
 
   factory SummaryStats.fromMap(Map<String, dynamic> m) => SummaryStats(
-    totalHeardGospel: (m['total_heard_gospel'] as num?)?.toInt() ?? 0,
-    heardGospelNoContact: (m['heard_gospel_no_contact'] as num?)?.toInt() ?? 0,
-    heardGospelHasContact:
+    totalSalvation: (m['total_heard_gospel'] as num?)?.toInt() ?? 0,
+    salvationNoContact: (m['heard_gospel_no_contact'] as num?)?.toInt() ?? 0,
+    salvationHasContact:
         (m['heard_gospel_has_contact'] as num?)?.toInt() ?? 0,
     scripturesDistributed: (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
     healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
@@ -1467,7 +1467,7 @@ class _TimeToGoAppState extends State<TimeToGoApp> {
   static const _tokenKey = 'api_access_token_v1';
   static const _apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://api.time.to.go.xn--80a6ad.space',
+    defaultValue: 'https://api.time-to-go.com',
   );
   static const _apiAccessToken = String.fromEnvironment('API_ACCESS_TOKEN');
 
@@ -3852,7 +3852,7 @@ class _SummaryStatsCard extends StatelessWidget {
     final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     return Column(
       children: [
-        // ── Hero stat: total heard gospel ──────────────────────────────────
+        // ── Hero stat: total salvation ─────────────────────────────────────
         Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
@@ -3884,7 +3884,7 @@ class _SummaryStatsCard extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      tr.totalHeardGospel,
+                      tr.totalSalvation,
                       style: const TextStyle(
                         fontSize: 14,
                         color: Colors.white,
@@ -3897,7 +3897,7 @@ class _SummaryStatsCard extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                _fmt(summary.totalHeardGospel),
+                _fmt(summary.totalSalvation),
                 style: const TextStyle(
                   fontSize: 48,
                   fontWeight: FontWeight.w800,
@@ -3917,8 +3917,8 @@ class _SummaryStatsCard extends StatelessWidget {
                 context,
                 icon: CupertinoIcons.phone_arrow_down_left,
                 color: const Color(0xFFFF9500),
-                value: _fmt(summary.heardGospelNoContact),
-                label: tr.heardGospelNoContact,
+                value: _fmt(summary.salvationNoContact),
+                label: tr.salvationNoContact,
                 isDark: isDark,
               ),
             ),
@@ -3928,8 +3928,8 @@ class _SummaryStatsCard extends StatelessWidget {
                 context,
                 icon: CupertinoIcons.phone_fill,
                 color: const Color(0xFF34C759),
-                value: _fmt(summary.heardGospelHasContact),
-                label: tr.heardGospelHasContact,
+                value: _fmt(summary.salvationHasContact),
+                label: tr.salvationHasContact,
                 isDark: isDark,
               ),
             ),
@@ -4074,7 +4074,7 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      tr.totalHeardGospel,
+                      tr.totalSalvation,
                       style: const TextStyle(
                         fontSize: 14,
                         color: Colors.white,
@@ -4086,7 +4086,7 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                _fmt(summary.totalHeardGospel),
+                _fmt(summary.totalSalvation),
                 style: const TextStyle(
                   fontSize: 52,
                   fontWeight: FontWeight.w900,
@@ -4106,8 +4106,8 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
                 context,
                 icon: Icons.phone_missed_rounded,
                 color: const Color(0xFFFF9500),
-                value: _fmt(summary.heardGospelNoContact),
-                label: tr.heardGospelNoContact,
+                value: _fmt(summary.salvationNoContact),
+                label: tr.salvationNoContact,
               ),
             ),
             const SizedBox(width: 10),
@@ -4116,8 +4116,8 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
                 context,
                 icon: Icons.phone_in_talk_rounded,
                 color: const Color(0xFF34C759),
-                value: _fmt(summary.heardGospelHasContact),
-                label: tr.heardGospelHasContact,
+                value: _fmt(summary.salvationHasContact),
+                label: tr.salvationHasContact,
               ),
             ),
           ],
@@ -10249,9 +10249,9 @@ class S {
   String get noLatestTestimonies =>
       _ru ? 'Пока нет свидетельств.' : 'No testimonies yet.';
   String get back => _ru ? 'Назад' : 'Back';
-  String get heardGospelCountLabel => _ru
-      ? 'Всего человек спасение Евангелие'
-      : 'Total people heard the Gospel';
+  String get salvationCountLabel => _ru
+      ? 'Всего принял Иисуса'
+      : 'Total Salvation';
   String get acceptedJesusCountLabel =>
       _ru ? 'Человек приняло Иисуса' : 'People accepted Jesus';
   String get heroTitle => _ru
@@ -10489,12 +10489,12 @@ class S {
   // Summary stats labels
   String get generalStats => _ru ? 'Общая' : 'General';
   String get personalStats => _ru ? 'Личная' : 'Personal';
-  String get totalHeardGospel =>
-      _ru ? 'Всего спасение евангелие' : 'Total heard the Gospel';
-  String get heardGospelNoContact =>
-      _ru ? 'Спаслось, нет контакта' : 'Heard, no contact';
-  String get heardGospelHasContact =>
-      _ru ? 'Спаслось, есть контакт' : 'Heard, has contact';
+  String get totalSalvation =>
+      _ru ? 'Всего принял Иисуса' : 'Total Salvation';
+  String get salvationNoContact =>
+      _ru ? 'Принял Иисуса, нет контакта' : 'Salvation, no contact';
+  String get salvationHasContact =>
+      _ru ? 'Принял Иисуса, есть контакт' : 'Salvation, has contact';
   String get personalStatsUnavailable => _ru
       ? 'Войдите в аккаунт, чтобы видеть личную статистику'
       : 'Sign in to view personal statistics';
