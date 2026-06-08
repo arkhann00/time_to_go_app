@@ -237,6 +237,11 @@ class BackendApi {
     return _asListOfMap(data);
   }
 
+  Future<List<Map<String, dynamic>>> getTestimonies() async {
+    final data = await _request('GET', '/believers/testimonies');
+    return _asListOfMap(data);
+  }
+
   Future<Map<String, dynamic>> getTestimonyOfDay({String? day}) async {
     final query = <String, String>{};
     if (day != null && day.isNotEmpty) query['day'] = day;
@@ -366,27 +371,32 @@ class BackendApi {
     int salvationPrayedUnreachable = 0,
     int scripturesDistributed = 0,
     int healingsDeliverances = 0,
+    String? testimony,
   }) async {
+    final body = <String, dynamic>{
+      'gospels_told': gospelsTold,
+      'salvation_prayed_unreachable': salvationPrayedUnreachable,
+      'scriptures_distributed': scripturesDistributed,
+      'healings_deliverances': healingsDeliverances,
+    };
+    if (testimony != null) body['testimony'] = testimony.trim().isEmpty ? null : testimony.trim();
     final data = await _request(
       'POST',
       '/outreach-statistics/add',
       authRequired: true,
-      body: {
-        'gospels_told': gospelsTold,
-        'salvation_prayed_unreachable': salvationPrayedUnreachable,
-        'scriptures_distributed': scripturesDistributed,
-        'healings_deliverances': healingsDeliverances,
-      },
+      body: body,
     );
     return _asMap(data);
   }
 
   /// Directly overwrites specific fields on the current user's record.
+  /// Pass [testimonies] to replace the entire testimonies list (for edit/delete of individual items).
   Future<Map<String, dynamic>> patchOutreachStatisticsMe({
     int? gospelsTold,
     int? salvationPrayedUnreachable,
     int? scripturesDistributed,
     int? healingsDeliverances,
+    List<String>? testimonies,
   }) async {
     final body = <String, dynamic>{};
     if (gospelsTold != null) body['gospels_told'] = gospelsTold;
@@ -399,6 +409,7 @@ class BackendApi {
     if (healingsDeliverances != null) {
       body['healings_deliverances'] = healingsDeliverances;
     }
+    if (testimonies != null) body['testimonies'] = testimonies;
     final data = await _request(
       'PATCH',
       '/outreach-statistics/me',

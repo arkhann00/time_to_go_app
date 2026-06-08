@@ -35,8 +35,10 @@ Use it as the single source of truth for endpoints, auth, request/response shape
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/refresh`
+- `GET /uploads/{path}` — статические файлы (аватарки и другие загрузки)
 - `GET /believers/all`
 - `GET /believers/testimony-of-day`
+- `GET /believers/testimonies`
 - `GET /believers/stats/accepted-jesus-count`
 - `GET /believers/latest`
 - `GET /outreach-statistics/all`
@@ -135,18 +137,56 @@ Each user has **exactly one** cumulative statistics record. There is no list of 
 
 Fields:
 
-| Field                          | Type              | Notes                        |
-| ------------------------------ | ----------------- | ---------------------------- |
-| `id`                           | integer           |                              |
-| `user_id`                      | integer           | unique — one record per user |
-| `gospels_told`                 | integer ≥ 0       | running total                |
-| `salvation_prayed_unreachable` | integer ≥ 0       | running total                |
-| `scriptures_distributed`       | integer ≥ 0       | running total                |
-| `healings_deliverances`        | integer ≥ 0       | running total                |
-| `created_at`                   | ISO 8601 datetime |                              |
-| `updated_at`                   | ISO 8601 datetime |                              |
+| Field                          | Type              | Notes                                       |
+| ------------------------------ | ----------------- | ------------------------------------------- |
+| `id`                           | integer           |                                             |
+| `user_id`                      | integer           | unique — one record per user                |
+| `gospels_told`                 | integer ≥ 0       | running total                               |
+| `salvation_prayed_unreachable` | integer ≥ 0       | running total                               |
+| `scriptures_distributed`       | integer ≥ 0       | running total                               |
+| `healings_deliverances`        | integer ≥ 0       | running total                               |
+| `testimonies`                  | `list[string]`    | list of testimonies added by the evangelist |
+| `created_at`                   | ISO 8601 datetime |                                             |
+| `updated_at`                   | ISO 8601 datetime |                                             |
 
 `/outreach-statistics/all` additionally returns `user: { id, name, email, avatar_url, about }` per record.
+
+### Testimony (unified response)
+
+Used by `GET /believers/testimony-of-day` and `GET /believers/testimonies`.
+Combines testimonies from both `Believer` records and `OutreachStatistics` records.
+
+```json
+{
+  "source": "believer",
+  "testimony": "He opened his heart during prayer",
+  "owner": { "id": 1, "name": "John", "avatar_url": null },
+  "believer_name": "Alex",
+  "met_at": "2026-05-14"
+}
+```
+
+```json
+{
+  "source": "outreach",
+  "testimony": "God healed three people today",
+  "owner": {
+    "id": 2,
+    "name": "Maria",
+    "avatar_url": "/uploads/avatars/user_2.jpg"
+  },
+  "believer_name": null,
+  "met_at": null
+}
+```
+
+| Field           | Type                         | Notes                                    |
+| --------------- | ---------------------------- | ---------------------------------------- |
+| `source`        | `"believer"` \| `"outreach"` | origin of the testimony                  |
+| `testimony`     | string                       | testimony text                           |
+| `owner`         | `{ id, name, avatar_url }`   | user who added it                        |
+| `believer_name` | string \| null               | non-null only when `source = "believer"` |
+| `met_at`        | `YYYY-MM-DD` \| null         | non-null only when `source = "believer"` |
 
 ### Summary Statistics (new)
 
@@ -171,6 +211,31 @@ Response `200`:
 ```json
 { "status": "success" }
 ```
+
+---
+
+## Static Files
+
+### `GET /uploads/{path}` (public)
+
+Отдаёт загруженные файлы (аватарки и прочие медиа). Никакой авторизации не требует.
+
+Путь формируется автоматически из поля `avatar_url` в объекте пользователя:
+
+```
+avatar_url: "/uploads/avatars/user_1_abc123.jpg"
+full URL:   "http://127.0.0.1:8000/uploads/avatars/user_1_abc123.jpg"
+```
+
+То есть полный URL = `<base_url>` + `avatar_url`.
+
+Если `avatar_url` равен `null` — у пользователя нет аватарки.
+
+Response `200`: бинарный файл с правильным `Content-Type`.
+
+Errors:
+
+- `404` — файл не найден
 
 ---
 
@@ -372,11 +437,19 @@ Query params:
 
 - `day` — optional, `YYYY-MM-DD` (defaults to today on the server)
 
-Returns one deterministic believer for the day. Only believers with a non-empty `testimony` are eligible. Selection rotates daily.
+Returns one `TestimonyResponse` for the day. Pools testimonies from both `Believer` records and `OutreachStatistics` records. Selection rotates daily by `day.toordinal() % pool_size`.
+
+Response `200`: `TestimonyResponse` (see Data Models).
 
 Errors:
 
-- `404` — no believers with testimony exist
+- `404` — no testimonies exist in either source
+
+### `GET /believers/testimonies` (public)
+
+Returns all testimonies from believers and outreach statistics combined, sorted by source then id.
+
+Response `200`: `list[TestimonyResponse]`
 
 ### `GET /believers/stats/accepted-jesus-count` (public)
 
@@ -465,6 +538,10 @@ Response `200`:
   "salvation_prayed_unreachable": 5,
   "scriptures_distributed": 20,
   "healings_deliverances": 8,
+  "testimonies": [
+    "God healed three people today",
+    "Two people gave their lives to Jesus"
+  ],
   "created_at": "2026-06-01T10:00:00+00:00",
   "updated_at": "2026-06-07T14:30:00+00:00"
 }
@@ -483,18 +560,20 @@ Request:
   "gospels_told": 5,
   "salvation_prayed_unreachable": 1,
   "scriptures_distributed": 10,
-  "healings_deliverances": 2
+  "healings_deliverances": 2,
+  "testimony": "God healed three people today"
 }
 ```
 
-All fields default to `0` if omitted.
+Numeric fields default to `0` if omitted. `testimony` is optional — if provided, a **new entry is appended** to the user's testimonies list (not replaced).
 
 Response `200`: OutreachStatistics record with updated totals.
 
 ### `PATCH /outreach-statistics/me` (protected)
 
-Directly sets (overwrites) specific fields on the current user's record.
+Directly sets (overwrites) specific numeric fields on the current user's record.
 Use this for the "edit statistics" UI where the user manually corrects values.
+Testimonies cannot be updated via this endpoint — use `POST /outreach-statistics/add` to append new ones.
 
 Request (all fields optional):
 
@@ -533,6 +612,7 @@ Response `200`:
     "salvation_prayed_unreachable": 5,
     "scriptures_distributed": 20,
     "healings_deliverances": 8,
+    "testimonies": ["God healed three people today"],
     "created_at": "2026-06-01T10:00:00+00:00",
     "updated_at": "2026-06-07T14:30:00+00:00",
     "user": {
