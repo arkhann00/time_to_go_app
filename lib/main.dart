@@ -132,6 +132,18 @@ class _AppleSection extends StatelessWidget {
 // OUTREACH STATISTICS MODELS
 // ─────────────────────────────────────────────────────────────────────────────
 
+class OutreachTestimony {
+  final int id;
+  final String text;
+  const OutreachTestimony({required this.id, required this.text});
+
+  factory OutreachTestimony.fromMap(Map<String, dynamic> m) =>
+      OutreachTestimony(
+        id: (m['id'] as num?)?.toInt() ?? 0,
+        text: (m['text'] as String? ?? '').trim(),
+      );
+}
+
 class OutreachStatEntry {
   final int id;
   final int userId;
@@ -139,7 +151,7 @@ class OutreachStatEntry {
   final int salvationPrayedUnreachable;
   final int scripturesDistributed;
   final int healingsDeliverances;
-  final List<String> testimonies;
+  final List<OutreachTestimony> testimonies;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String userName;
@@ -172,8 +184,9 @@ class OutreachStatEntry {
       healingsDeliverances: (m['healings_deliverances'] as num?)?.toInt() ?? 0,
       testimonies:
           (m['testimonies'] as List<dynamic>?)
-              ?.whereType<String>()
-              .where((t) => t.trim().isNotEmpty)
+              ?.whereType<Map<String, dynamic>>()
+              .map(OutreachTestimony.fromMap)
+              .where((t) => t.text.isNotEmpty)
               .toList() ??
           const [],
       createdAt:
@@ -2741,22 +2754,9 @@ class _HomeScreenState extends State<HomeScreen> {
     await _refreshSummary();
   }
 
-  Future<void> _updateOutreachTestimony(int index, String newText) async {
-    final current = List<String>.from(_myStats?.testimonies ?? []);
-    if (index < 0 || index >= current.length) return;
-    current[index] = newText.trim();
+  Future<void> _deleteOutreachTestimony(int testimonyId) async {
     final result = await _backendApi.patchOutreachStatisticsMe(
-      testimonies: current,
-    );
-    if (mounted) setState(() => _myStats = OutreachStatEntry.fromMap(result));
-  }
-
-  Future<void> _deleteOutreachTestimony(int index) async {
-    final current = List<String>.from(_myStats?.testimonies ?? []);
-    if (index < 0 || index >= current.length) return;
-    current.removeAt(index);
-    final result = await _backendApi.patchOutreachStatisticsMe(
-      testimonies: current,
+      deleteTestimonyId: testimonyId,
     );
     if (mounted) setState(() => _myStats = OutreachStatEntry.fromMap(result));
   }
@@ -2843,9 +2843,6 @@ class _HomeScreenState extends State<HomeScreen> {
               healingsDeliverances: healingsDeliverances,
             ),
         onResetOutreachStats: _resetOutreachStats,
-        onEditTestimony: widget.isAuthenticated
-            ? _updateOutreachTestimony
-            : null,
         onDeleteTestimony: widget.isAuthenticated
             ? _deleteOutreachTestimony
             : null,
@@ -3479,35 +3476,24 @@ class _OutreachTestimonyCard extends StatelessWidget {
   final String text;
   final int number;
   final Color tint;
-  final Future<void> Function(String newText)? onEdit;
   final Future<void> Function()? onDelete;
 
   const _OutreachTestimonyCard({
     required this.text,
     required this.number,
     required this.tint,
-    this.onEdit,
     this.onDelete,
   });
 
   void _showActions(BuildContext context) {
-    final canEdit = onEdit != null;
     final canDelete = onDelete != null;
-    if (!canEdit && !canDelete) return;
+    if (!canDelete) return;
 
     if (_isApple) {
       showCupertinoModalPopup<void>(
         context: context,
         builder: (_) => CupertinoActionSheet(
           actions: [
-            if (canEdit)
-              CupertinoActionSheetAction(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _openEditSheet(context);
-                },
-                child: const Text('Редактировать'),
-              ),
             if (canDelete)
               CupertinoActionSheetAction(
                 isDestructiveAction: true,
@@ -3531,15 +3517,6 @@ class _OutreachTestimonyCard extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (canEdit)
-                ListTile(
-                  leading: const Icon(Icons.edit_outlined),
-                  title: const Text('Редактировать'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _openEditSheet(context);
-                  },
-                ),
               if (canDelete)
                 ListTile(
                   leading: const Icon(Icons.delete_outline, color: Colors.red),
@@ -3559,14 +3536,6 @@ class _OutreachTestimonyCard extends StatelessWidget {
     }
   }
 
-  void _openEditSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _TestimonyEditSheet(initialText: text, onSave: onEdit!),
-    );
-  }
 
   void _confirmDelete(BuildContext context) {
     if (_isApple) {
@@ -3630,7 +3599,7 @@ class _OutreachTestimonyCard extends StatelessWidget {
     final labelColor = _isApple
         ? CupertinoColors.label.resolveFrom(context)
         : Theme.of(context).colorScheme.onSurface;
-    final canAct = onEdit != null || onDelete != null;
+    final canAct = onDelete != null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -6039,15 +6008,13 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
   final S tr;
   final VoidCallback onEdit;
   final VoidCallback onReset;
-  final Future<void> Function(int index, String newText)? onEditTestimony;
-  final Future<void> Function(int index)? onDeleteTestimony;
+  final Future<void> Function(int id)? onDeleteTestimony;
 
   const _ProfileOutreachEntryCard({
     required this.entry,
     required this.tr,
     required this.onEdit,
     required this.onReset,
-    this.onEditTestimony,
     this.onDeleteTestimony,
   });
 
@@ -6175,14 +6142,11 @@ class _ProfileOutreachEntryCard extends StatelessWidget {
             ),
             for (int i = 0; i < entry.testimonies.length; i++)
               _OutreachTestimonyCard(
-                text: entry.testimonies[i],
+                text: entry.testimonies[i].text,
                 number: entry.testimonies.length - i,
                 tint: tint,
-                onEdit: onEditTestimony != null
-                    ? (newText) => onEditTestimony!(i, newText)
-                    : null,
                 onDelete: onDeleteTestimony != null
-                    ? () => onDeleteTestimony!(i)
+                    ? () => onDeleteTestimony!(entry.testimonies[i].id)
                     : null,
               ),
           ],
@@ -6221,8 +6185,7 @@ class ProfilePage extends StatelessWidget {
   })
   onEditOutreachStats;
   final Future<void> Function() onResetOutreachStats;
-  final Future<void> Function(int index, String newText)? onEditTestimony;
-  final Future<void> Function(int index)? onDeleteTestimony;
+  final Future<void> Function(int id)? onDeleteTestimony;
   final Future<void> Function() onRefresh;
 
   const ProfilePage({
@@ -6242,7 +6205,6 @@ class ProfilePage extends StatelessWidget {
     required this.onAddOutreachStats,
     required this.onEditOutreachStats,
     required this.onResetOutreachStats,
-    this.onEditTestimony,
     this.onDeleteTestimony,
     required this.onRefresh,
   });
@@ -6584,7 +6546,6 @@ class ProfilePage extends StatelessWidget {
             tr: tr,
             onEdit: () => _openEditOutreachStatsSheet(context),
             onReset: () => _confirmResetStats(context),
-            onEditTestimony: onEditTestimony,
             onDeleteTestimony: onDeleteTestimony,
           ),
         );
@@ -6991,14 +6952,12 @@ class ProfilePage extends StatelessWidget {
                         const SizedBox(height: 8),
                         for (int i = 0; i < myStats!.testimonies.length; i++)
                           _OutreachTestimonyCard(
-                            text: myStats!.testimonies[i],
+                            text: myStats!.testimonies[i].text,
                             number: myStats!.testimonies.length - i,
                             tint: theme.colorScheme.primary,
-                            onEdit: onEditTestimony != null
-                                ? (newText) => onEditTestimony!(i, newText)
-                                : null,
                             onDelete: onDeleteTestimony != null
-                                ? () => onDeleteTestimony!(i)
+                                ? () => onDeleteTestimony!(
+                                    myStats!.testimonies[i].id)
                                 : null,
                           ),
                       ],

@@ -389,14 +389,14 @@ class BackendApi {
     return _asMap(data);
   }
 
-  /// Directly overwrites specific fields on the current user's record.
-  /// Pass [testimonies] to replace the entire testimonies list (for edit/delete of individual items).
+  /// Directly overwrites specific numeric fields on the current user's record.
+  /// Pass [deleteTestimonyId] to delete a single testimony by its ID.
   Future<Map<String, dynamic>> patchOutreachStatisticsMe({
     int? gospelsTold,
     int? salvationPrayedUnreachable,
     int? scripturesDistributed,
     int? healingsDeliverances,
-    List<String>? testimonies,
+    int? deleteTestimonyId,
   }) async {
     final body = <String, dynamic>{};
     if (gospelsTold != null) body['gospels_told'] = gospelsTold;
@@ -409,7 +409,7 @@ class BackendApi {
     if (healingsDeliverances != null) {
       body['healings_deliverances'] = healingsDeliverances;
     }
-    if (testimonies != null) body['testimonies'] = testimonies;
+    if (deleteTestimonyId != null) body['delete_testimony_id'] = deleteTestimonyId;
     final data = await _request(
       'PATCH',
       '/outreach-statistics/me',

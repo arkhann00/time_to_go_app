@@ -5,6 +5,9 @@ Use it as the single source of truth for endpoints, auth, request/response shape
 
 > **BREAKING CHANGES (2026-06-07)** — Outreach Statistics were fully redesigned.
 > See the [Breaking changes](#breaking-changes-2026-06-07) section before integrating.
+>
+> **CHANGE (2026-06-08)** — `testimonies` в ответе изменён с `list[string]` на `list[{id, text}]`.
+> `PATCH /outreach-statistics/me` теперь поддерживает удаление свидетельства через `delete_testimony_id`.
 
 ## Base
 
@@ -137,17 +140,17 @@ Each user has **exactly one** cumulative statistics record. There is no list of 
 
 Fields:
 
-| Field                          | Type              | Notes                                       |
-| ------------------------------ | ----------------- | ------------------------------------------- |
-| `id`                           | integer           |                                             |
-| `user_id`                      | integer           | unique — one record per user                |
-| `gospels_told`                 | integer ≥ 0       | running total                               |
-| `salvation_prayed_unreachable` | integer ≥ 0       | running total                               |
-| `scriptures_distributed`       | integer ≥ 0       | running total                               |
-| `healings_deliverances`        | integer ≥ 0       | running total                               |
-| `testimonies`                  | `list[string]`    | list of testimonies added by the evangelist |
-| `created_at`                   | ISO 8601 datetime |                                             |
-| `updated_at`                   | ISO 8601 datetime |                                             |
+| Field                          | Type               | Notes                                       |
+| ------------------------------ | ------------------ | ------------------------------------------- |
+| `id`                           | integer            |                                             |
+| `user_id`                      | integer            | unique — one record per user                |
+| `gospels_told`                 | integer ≥ 0        | running total                               |
+| `salvation_prayed_unreachable` | integer ≥ 0        | running total                               |
+| `scriptures_distributed`       | integer ≥ 0        | running total                               |
+| `healings_deliverances`        | integer ≥ 0        | running total                               |
+| `testimonies`                  | `list[{id, text}]` | list of testimonies added by the evangelist |
+| `created_at`                   | ISO 8601 datetime  |                                             |
+| `updated_at`                   | ISO 8601 datetime  |                                             |
 
 `/outreach-statistics/all` additionally returns `user: { id, name, email, avatar_url, about }` per record.
 
@@ -539,8 +542,8 @@ Response `200`:
   "scriptures_distributed": 20,
   "healings_deliverances": 8,
   "testimonies": [
-    "God healed three people today",
-    "Two people gave their lives to Jesus"
+    { "id": 1, "text": "God healed three people today" },
+    { "id": 2, "text": "Two people gave their lives to Jesus" }
   ],
   "created_at": "2026-06-01T10:00:00+00:00",
   "updated_at": "2026-06-07T14:30:00+00:00"
@@ -572,21 +575,27 @@ Response `200`: OutreachStatistics record with updated totals.
 ### `PATCH /outreach-statistics/me` (protected)
 
 Directly sets (overwrites) specific numeric fields on the current user's record.
-Use this for the "edit statistics" UI where the user manually corrects values.
-Testimonies cannot be updated via this endpoint — use `POST /outreach-statistics/add` to append new ones.
+Also supports deleting a single testimony by ID.
+Use this for the "edit statistics" UI where the user manually corrects values or removes a testimony.
 
 Request (all fields optional):
 
 ```json
 {
   "gospels_told": 100,
-  "scriptures_distributed": 50
+  "scriptures_distributed": 50,
+  "delete_testimony_id": 3
 }
 ```
 
-Omitted fields are left unchanged.
+- Numeric fields — overwrite if provided, leave unchanged if omitted.
+- `delete_testimony_id` — if provided, deletes the `Testimony` record with that ID (must belong to the current user). The numeric statistics are not affected.
 
 Response `200`: OutreachStatistics record.
+
+Errors:
+
+- `404` — testimony with `delete_testimony_id` not found or does not belong to current user
 
 ### `POST /outreach-statistics/reset` (protected)
 
@@ -612,7 +621,7 @@ Response `200`:
     "salvation_prayed_unreachable": 5,
     "scriptures_distributed": 20,
     "healings_deliverances": 8,
-    "testimonies": ["God healed three people today"],
+    "testimonies": [{ "id": 1, "text": "God healed three people today" }],
     "created_at": "2026-06-01T10:00:00+00:00",
     "updated_at": "2026-06-07T14:30:00+00:00",
     "user": {
