@@ -18,7 +18,7 @@ class BackendApiException implements Exception {
 }
 
 class BackendApi {
-  final Uri _baseUri;
+  final String _baseStr;
   final http.Client _client;
   String? _accessToken;
 
@@ -26,7 +26,7 @@ class BackendApi {
     required String baseUrl,
     String? accessToken,
     http.Client? client,
-  }) : _baseUri = Uri.parse(baseUrl),
+  }) : _baseStr = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl,
        _client = client ?? http.Client(),
        _accessToken = accessToken?.trim().isEmpty == true
            ? null
@@ -270,7 +270,7 @@ class BackendApi {
     Map<String, String>? query,
     Set<int> expectedCodes = const {200, 201},
   }) async {
-    final uri = _baseUri.resolve(path).replace(queryParameters: query);
+    final uri = Uri.parse('$_baseStr$path').replace(queryParameters: query);
     final headers = <String, String>{'Content-Type': 'application/json'};
 
     if (authRequired) {

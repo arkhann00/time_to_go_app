@@ -7,7 +7,7 @@ COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
 
 COPY . .
-RUN flutter build web --release
+RUN flutter build web --release --dart-define=API_BASE_URL=https://time.to.go.xn--80a6ad.space/api
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
