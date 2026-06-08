@@ -126,6 +126,16 @@ class BackendApi {
     return _asMap(data);
   }
 
+  /// Удаляет аккаунт и все данные пользователя. Response 204.
+  Future<void> deleteMyAccount() async {
+    await _request(
+      'DELETE',
+      '/auth/me',
+      authRequired: true,
+      expectedCodes: const {204},
+    );
+  }
+
   Future<Map<String, dynamic>> patchMe({String? name, String? about}) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;

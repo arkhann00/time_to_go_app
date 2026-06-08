@@ -55,6 +55,7 @@ Use it as the single source of truth for endpoints, auth, request/response shape
 
 - `GET /auth/me`
 - `PATCH /auth/me`
+- `DELETE /auth/me`
 - `POST /auth/me/avatar`
 - `GET /methods`
 - `POST /methods`
@@ -204,8 +205,7 @@ Aggregated view combining Believer counts and Outreach Statistics totals.
 | ----------------------------- | --------------------------------------------------------------------------------- |
 | `total_heard_gospel`          | `count(believers)` + `sum(gospels_told)`                                          |
 | `total_saved`                 | `count(believers where stage ≠ interested)` + `sum(salvation_prayed_unreachable)` |
-| `heard_gospel_no_contact`     | `sum(gospels_told)` + `count(believers with no phone AND no telegram)`            |
-| `heard_gospel_has_contact`    | `count(believers with phone OR telegram)`                                         |
+| `contacts_taken`              | `count(believers with phone OR telegram)`                                         |
 | `scriptures_distributed`      | `sum(scriptures_distributed)` — Раздано Евангелие от Иоана                        |
 | `fathers_letters_distributed` | `sum(fathers_letters_distributed)` — Раздано Писем Отца                           |
 | `healings_deliverances`       | `sum(healings_deliverances)` — Исцеления / Освобождение                           |
@@ -319,6 +319,14 @@ Errors:
 ### `GET /auth/me` (protected)
 
 Response `200`: User object.
+
+### `DELETE /auth/me` (protected)
+
+Удаляет аккаунт текущего пользователя вместе со всеми его данными (believers, методы, статистика).
+
+Response `204`: нет тела.
+
+---
 
 ### `PATCH /auth/me` (protected)
 
@@ -515,8 +523,7 @@ Response `200`:
 {
   "total_heard_gospel": 150,
   "total_saved": 35,
-  "heard_gospel_no_contact": 120,
-  "heard_gospel_has_contact": 30,
+  "contacts_taken": 30,
   "scriptures_distributed": 45,
   "fathers_letters_distributed": 20,
   "healings_deliverances": 12
@@ -529,8 +536,7 @@ Field definitions:
 | ----------------------------- | --------------------------------------------------------------------------------- |
 | `total_heard_gospel`          | `count(believers)` + `sum(gospels_told)`                                          |
 | `total_saved`                 | `count(believers where stage ≠ interested)` + `sum(salvation_prayed_unreachable)` |
-| `heard_gospel_no_contact`     | `sum(gospels_told)` + `count(believers with no phone AND no telegram)`            |
-| `heard_gospel_has_contact`    | `count(believers with phone OR telegram)`                                         |
+| `contacts_taken`              | `count(believers with phone OR telegram)`                                         |
 | `scriptures_distributed`      | `sum(scriptures_distributed)` — Раздано Евангелие от Иоана                        |
 | `fathers_letters_distributed` | `sum(fathers_letters_distributed)` — Раздано Писем Отца                           |
 | `healings_deliverances`       | `sum(healings_deliverances)` — Исцеления / Освобождение                           |

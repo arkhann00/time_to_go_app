@@ -206,8 +206,7 @@ class OutreachStatEntry {
 class SummaryStats {
   final int totalSalvation;
   final int totalSaved;
-  final int salvationNoContact;
-  final int salvationHasContact;
+  final int contactsTaken;
   final int scripturesDistributed;
   final int fathersLettersDistributed;
   final int healingsDeliverances;
@@ -215,8 +214,7 @@ class SummaryStats {
   const SummaryStats({
     this.totalSalvation = 0,
     this.totalSaved = 0,
-    this.salvationNoContact = 0,
-    this.salvationHasContact = 0,
+    this.contactsTaken = 0,
     this.scripturesDistributed = 0,
     this.fathersLettersDistributed = 0,
     this.healingsDeliverances = 0,
@@ -225,9 +223,7 @@ class SummaryStats {
   factory SummaryStats.fromMap(Map<String, dynamic> m) => SummaryStats(
     totalSalvation: (m['total_heard_gospel'] as num?)?.toInt() ?? 0,
     totalSaved: (m['total_saved'] as num?)?.toInt() ?? 0,
-    salvationNoContact: (m['heard_gospel_no_contact'] as num?)?.toInt() ?? 0,
-    salvationHasContact:
-        (m['heard_gospel_has_contact'] as num?)?.toInt() ?? 0,
+    contactsTaken: (m['contacts_taken'] as num?)?.toInt() ?? 0,
     scripturesDistributed: (m['scriptures_distributed'] as num?)?.toInt() ?? 0,
     fathersLettersDistributed:
         (m['fathers_letters_distributed'] as num?)?.toInt() ?? 0,
@@ -2783,6 +2779,11 @@ class _HomeScreenState extends State<HomeScreen> {
     await _refreshSummary();
   }
 
+  Future<void> _deleteAccount() async {
+    await _backendApi.deleteMyAccount();
+    await widget.onLogout();
+  }
+
   Future<void> _deleteOutreachTestimony(int testimonyId) async {
     final result = await _backendApi.patchOutreachStatisticsMe(
       deleteTestimonyId: testimonyId,
@@ -2882,6 +2883,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ? _deleteOutreachTestimony
             : null,
         onLogout: widget.onLogout,
+        onDeleteAccount: widget.isAuthenticated ? _deleteAccount : null,
         onSettings: _openSettings,
         onRefresh: _load,
       ),
@@ -3890,17 +3892,17 @@ class _SummaryStatsCard extends StatelessWidget {
     final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     return Column(
       children: [
-        // ── Hero stat: total salvation ─────────────────────────────────────
+        // ── Hero: split two big numbers ────────────────────────────────────
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [tint, tint.withOpacity(0.72)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3914,49 +3916,103 @@ class _SummaryStatsCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
-                      CupertinoIcons.person_3_fill,
-                      size: 18,
+                      CupertinoIcons.chart_bar_alt_fill,
+                      size: 16,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      tr.totalSalvation,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
-                      ),
+                  const SizedBox(width: 8),
+                  Text(
+                    tr.outreachStatsHeader,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Text(
-                _fmt(summary.totalSalvation),
-                style: const TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.0,
+              const SizedBox(height: 22),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _fmt(summary.totalSalvation),
+                            style: const TextStyle(
+                              fontSize: 52,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              height: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            tr.totalSalvation,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.82),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        width: 1,
+                        height: double.infinity,
+                        color: Colors.white.withOpacity(0.28),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _fmt(summary.totalSaved),
+                            style: TextStyle(
+                              fontSize: 52,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white.withOpacity(0.92),
+                              height: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            tr.totalSaved,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.82),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 10),
-        // ── Contact breakdown row ──────────────────────────────────────────
+        // ── Contacts + Scriptures ──────────────────────────────────────────
         Row(
           children: [
             Expanded(
               child: _miniCard(
                 context,
-                icon: CupertinoIcons.phone_arrow_down_left,
-                color: const Color(0xFFFF9500),
-                value: _fmt(summary.salvationNoContact),
-                label: tr.salvationNoContact,
+                icon: CupertinoIcons.phone_fill,
+                color: const Color(0xFF34C759),
+                value: _fmt(summary.contactsTaken),
+                label: tr.contactsTaken,
                 isDark: isDark,
               ),
             ),
@@ -3964,26 +4020,26 @@ class _SummaryStatsCard extends StatelessWidget {
             Expanded(
               child: _miniCard(
                 context,
-                icon: CupertinoIcons.phone_fill,
-                color: const Color(0xFF34C759),
-                value: _fmt(summary.salvationHasContact),
-                label: tr.salvationHasContact,
+                icon: CupertinoIcons.book_fill,
+                color: const Color(0xFFFF9500),
+                value: _fmt(summary.scripturesDistributed),
+                label: tr.scripturesDistributed,
                 isDark: isDark,
               ),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        // ── Scriptures + Healings row ──────────────────────────────────────
+        // ── Father's Letters + Healings ────────────────────────────────────
         Row(
           children: [
             Expanded(
               child: _miniCard(
                 context,
-                icon: CupertinoIcons.book_fill,
-                color: const Color(0xFFFF3B30),
-                value: _fmt(summary.scripturesDistributed),
-                label: tr.scripturesDistributed,
+                icon: CupertinoIcons.envelope_fill,
+                color: const Color(0xFF007AFF),
+                value: _fmt(summary.fathersLettersDistributed),
+                label: tr.fathersLettersDistributed,
                 isDark: isDark,
               ),
             ),
@@ -3995,33 +4051,6 @@ class _SummaryStatsCard extends StatelessWidget {
                 color: const Color(0xFF5856D6),
                 value: _fmt(summary.healingsDeliverances),
                 label: tr.healingsDeliverances,
-                isDark: isDark,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // ── Saved + Father's Letters row ───────────────────────────────────
-        Row(
-          children: [
-            Expanded(
-              child: _miniCard(
-                context,
-                icon: CupertinoIcons.checkmark_seal_fill,
-                color: const Color(0xFF34C759),
-                value: _fmt(summary.totalSaved),
-                label: tr.totalSaved,
-                isDark: isDark,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _miniCard(
-                context,
-                icon: CupertinoIcons.envelope_fill,
-                color: const Color(0xFF007AFF),
-                value: _fmt(summary.fathersLettersDistributed),
-                label: tr.fathersLettersDistributed,
                 isDark: isDark,
               ),
             ),
@@ -4107,10 +4136,10 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
     final primary = theme.colorScheme.primary;
     return Column(
       children: [
-        // ── Hero stat ─────────────────────────────────────────────────────
+        // ── Hero: split two big numbers ────────────────────────────────────
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 26),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [primary, primary.withOpacity(0.74)],
@@ -4131,73 +4160,127 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
-                      Icons.groups_rounded,
+                      Icons.bar_chart_rounded,
                       size: 20,
                       color: Colors.white,
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      tr.totalSalvation,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                      ),
+                  Text(
+                    tr.outreachStatsHeader,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Text(
-                _fmt(summary.totalSalvation),
-                style: const TextStyle(
-                  fontSize: 52,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  height: 1.0,
+              const SizedBox(height: 22),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _fmt(summary.totalSalvation),
+                            style: const TextStyle(
+                              fontSize: 54,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              height: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            tr.totalSalvation,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.82),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        width: 1,
+                        height: double.infinity,
+                        color: Colors.white.withOpacity(0.28),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _fmt(summary.totalSaved),
+                            style: TextStyle(
+                              fontSize: 54,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white.withOpacity(0.92),
+                              height: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            tr.totalSaved,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.82),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 10),
-        // ── Contact breakdown ─────────────────────────────────────────────
+        // ── Contacts + Scriptures ─────────────────────────────────────────
         Row(
           children: [
             Expanded(
               child: _miniCard(
                 context,
-                icon: Icons.phone_missed_rounded,
-                color: const Color(0xFFFF9500),
-                value: _fmt(summary.salvationNoContact),
-                label: tr.salvationNoContact,
+                icon: Icons.phone_in_talk_rounded,
+                color: const Color(0xFF34C759),
+                value: _fmt(summary.contactsTaken),
+                label: tr.contactsTaken,
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: _miniCard(
                 context,
-                icon: Icons.phone_in_talk_rounded,
-                color: const Color(0xFF34C759),
-                value: _fmt(summary.salvationHasContact),
-                label: tr.salvationHasContact,
+                icon: Icons.menu_book_rounded,
+                color: const Color(0xFFFF9500),
+                value: _fmt(summary.scripturesDistributed),
+                label: tr.scripturesDistributed,
               ),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        // ── Scriptures + Healings ─────────────────────────────────────────
+        // ── Father's Letters + Healings ───────────────────────────────────
         Row(
           children: [
             Expanded(
               child: _miniCard(
                 context,
-                icon: Icons.menu_book_rounded,
-                color: const Color(0xFFFF3B30),
-                value: _fmt(summary.scripturesDistributed),
-                label: tr.scripturesDistributed,
+                icon: Icons.mail_rounded,
+                color: const Color(0xFF007AFF),
+                value: _fmt(summary.fathersLettersDistributed),
+                label: tr.fathersLettersDistributed,
               ),
             ),
             const SizedBox(width: 10),
@@ -4208,31 +4291,6 @@ class _SummaryStatsCardMaterial extends StatelessWidget {
                 color: const Color(0xFF5856D6),
                 value: _fmt(summary.healingsDeliverances),
                 label: tr.healingsDeliverances,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // ── Saved + Father's Letters ──────────────────────────────────────
-        Row(
-          children: [
-            Expanded(
-              child: _miniCard(
-                context,
-                icon: Icons.verified_rounded,
-                color: const Color(0xFF34C759),
-                value: _fmt(summary.totalSaved),
-                label: tr.totalSaved,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _miniCard(
-                context,
-                icon: Icons.mail_rounded,
-                color: const Color(0xFF007AFF),
-                value: _fmt(summary.fathersLettersDistributed),
-                label: tr.fathersLettersDistributed,
               ),
             ),
           ],
@@ -6271,6 +6329,7 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onOpenAuth;
   final Future<void> Function() onEditAccount;
   final Future<void> Function() onLogout;
+  final Future<void> Function()? onDeleteAccount;
   final VoidCallback onSettings;
   final OutreachStatEntry? myStats;
   final bool myStatsLoading;
@@ -6306,6 +6365,7 @@ class ProfilePage extends StatelessWidget {
     required this.onOpenAuth,
     required this.onEditAccount,
     required this.onLogout,
+    this.onDeleteAccount,
     required this.onSettings,
     required this.myStats,
     required this.myStatsLoading,
@@ -6357,6 +6417,53 @@ class ProfilePage extends StatelessWidget {
       );
     }
     if (shouldLogout == true) await onLogout();
+  }
+
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final del = onDeleteAccount;
+    if (del == null) return;
+    bool? confirmed;
+    if (_isApple) {
+      confirmed = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: Text(tr.deleteAccountTitle),
+          content: Text(tr.deleteAccountBody),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(tr.cancel),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(tr.deleteAccountConfirm),
+            ),
+          ],
+        ),
+      );
+    } else {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: Icon(Icons.warning_amber_rounded, color: Theme.of(ctx).colorScheme.error, size: 32),
+          title: Text(tr.deleteAccountTitle),
+          content: Text(tr.deleteAccountBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(tr.cancel),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(tr.deleteAccountConfirm),
+            ),
+          ],
+        ),
+      );
+    }
+    if (confirmed == true) await del();
   }
 
   void _openAddOutreachStatsSheet(BuildContext context) {
@@ -6679,14 +6786,25 @@ class ProfilePage extends StatelessWidget {
             ),
             _AppleListRow(
               icon: CupertinoIcons.square_arrow_right,
-              iconBackground: CupertinoColors.destructiveRed.resolveFrom(
-                context,
-              ),
-              iconColor: CupertinoColors.white,
+              iconBackground: CupertinoColors.destructiveRed
+                  .resolveFrom(context)
+                  .withOpacity(0.18),
+              iconColor: CupertinoColors.destructiveRed.resolveFrom(context),
               title: tr.signOut,
               destructive: true,
               onTap: () => _confirmLogout(context),
             ),
+            if (onDeleteAccount != null)
+              _AppleListRow(
+                icon: CupertinoIcons.trash_fill,
+                iconBackground: CupertinoColors.destructiveRed
+                    .resolveFrom(context)
+                    .withOpacity(0.18),
+                iconColor: CupertinoColors.destructiveRed.resolveFrom(context),
+                title: tr.deleteAccountConfirm,
+                destructive: true,
+                onTap: () => _confirmDeleteAccount(context),
+              ),
           ],
         ),
       );
@@ -6853,6 +6971,15 @@ class ProfilePage extends StatelessWidget {
                               onPressed: () => _confirmLogout(context),
                               icon: const Icon(Icons.logout_rounded),
                             ),
+                            if (onDeleteAccount != null)
+                              IconButton(
+                                tooltip: tr.deleteAccountConfirm,
+                                onPressed: () => _confirmDeleteAccount(context),
+                                icon: Icon(
+                                  Icons.delete_forever_rounded,
+                                  color: theme.colorScheme.error,
+                                ),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -10442,6 +10569,13 @@ class S {
   String get signOutConfirmBody => _ru
       ? 'Вы уверены, что хотите выйти?'
       : 'Are you sure you want to sign out?';
+  String get deleteAccountConfirm =>
+      _ru ? 'Удалить аккаунт' : 'Delete account';
+  String get deleteAccountTitle =>
+      _ru ? 'Удалить аккаунт?' : 'Delete account?';
+  String get deleteAccountBody => _ru
+      ? 'Все ваши данные (верующие, статистика, методы) будут удалены безвозвратно. Это действие нельзя отменить.'
+      : 'All your data (believers, statistics, methods) will be permanently deleted. This cannot be undone.';
   String get continueOffline =>
       _ru ? 'Продолжить без входа' : 'Continue without sign in';
   String get authEmail => _ru ? 'Email' : 'Email';
@@ -10614,12 +10748,9 @@ class S {
   String get generalStats => _ru ? 'Общая' : 'General';
   String get personalStats => _ru ? 'Личная' : 'Personal';
   String get totalSalvation =>
-      _ru ? 'Всего принял Иисуса' : 'Total Salvation';
-  String get totalSaved => _ru ? 'Всего спасенных' : 'Total saved';
-  String get salvationNoContact =>
-      _ru ? 'Принял Иисуса, нет контакта' : 'Salvation, no contact';
-  String get salvationHasContact =>
-      _ru ? 'Принял Иисуса, есть контакт' : 'Salvation, has contact';
+      _ru ? 'Услышали Евангелие' : 'Heard the Gospel';
+  String get totalSaved => _ru ? 'Спасено' : 'Saved';
+  String get contactsTaken => _ru ? 'Есть контакт' : 'Has contact';
   String get personalStatsUnavailable => _ru
       ? 'Войдите в аккаунт, чтобы видеть личную статистику'
       : 'Sign in to view personal statistics';
