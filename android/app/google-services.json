@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "174577990348",
+    "project_id": "time-to-go-f5a9c",
+    "storage_bucket": "time-to-go-f5a9c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:174577990348:android:4acfc570ae6aaa501a2069",
+        "android_client_info": {
+          "package_name": "com.example.time_to_go_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC18v8gDnV-wwLoWtYm2r33YxFjdLhY6ws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
