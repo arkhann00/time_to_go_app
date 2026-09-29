@@ -1669,17 +1669,6 @@ class _AchievementsPage extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              _isRussian
-                  ? 'Достижения обновляются автоматически из вашей личной статистики и карточек Believers.'
-                  : 'Achievements update automatically from your personal statistics and Believers records.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
           ],
         ),
       ),
